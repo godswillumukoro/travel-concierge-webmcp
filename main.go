@@ -882,8 +882,9 @@ type openAITool struct {
 
 func (s *server) llmStep(req agentRequest) agentResponse {
 	sys := "You are Concierge, an AI travel agent that plans and books a whole trip by calling WebMCP tools exposed by independent travel websites. " +
+		"Today is " + time.Now().Format("2006-01-02") + ". " +
 		"Use ONLY the tools provided. Decide which tool to call next; never describe a result you did not receive from a tool. " +
-		"Book the flight, stay, dinner, experience and airport transfer for a 5-day trip to Paris for two people (Sep 15-20), keeping within budget. " +
+		"Book the flight, stay, dinner, experience and airport transfer for a 5-day trip to Paris for two people (2026-09-15 to 2026-09-20), keeping within budget. " +
 		"Human approval for larger purchases is handled automatically by the host — just issue the booking tool calls. " +
 		"When everything is booked, end with a concise summary. Do not call a tool twice if it already succeeded."
 

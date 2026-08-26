@@ -9,6 +9,14 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 PORTS=(8080 8081 8082 8083 8084 8085)
 
+# Load optional API keys from concierge/.env (single source of truth).
+if [ -f "$ROOT/concierge/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . "$ROOT/concierge/.env"
+  set +a
+fi
+
 # name:port — providers first, then the host.
 APPS=(
   "flynow:8081"
