@@ -77,10 +77,10 @@ Each is its own git repo. Sibling dirs like `broadcast-box/`, `lnaudit/`,
 | App | Human UI | WebMCP tools | Real-data layer | Backend |
 |---|---|---|---|---|
 | concierge | chat + approvals + itinerary + inspector + activity log (HTMX) | host: discovery + execution | n/a | agent endpoint: deterministic planner + optional OpenAI-compat LLM |
-| flynow | search/book/cancel (HTMX) | 6 tools | ❌ **TODO** real airports + Duffel | deterministic mock inventory |
-| stayly | search/reserve/cancel | 6 tools | ❌ **TODO** Photon hotels + Amadeus | deterministic mock |
-| dine | search/book/cancel | 5 tools | ❌ **TODO** Photon restaurants | deterministic mock |
-| explore | search/book/cancel | 5 tools | ❌ **TODO** Photon attractions | deterministic mock |
+| flynow | search/book/cancel + airport autocomplete | 6 tools | ✅ real airports + distance/duration; Duffel pending | mock inventory + live airports |
+| stayly | search/reserve/cancel | 6 tools | ✅ Photon hotels; Amadeus pending | mock + live hotels |
+| dine | search/book/cancel | 5 tools | ✅ Photon restaurants | mock + live restaurants |
+| explore | search/book/cancel | 5 tools | ✅ Photon museums | mock + live attractions |
 | ride | **autocomplete dropdown** + search/book/cancel | 5 tools | ✅ **DONE** Photon autocomplete + OSRM routing + mock fare | real geocode/route + gazetteer fallback |
 
 **Already verified end-to-end:** golden trip (5 searches → 5 bookings → itinerary,
@@ -101,9 +101,9 @@ autopilot browser smoke test (`?autopilot=1`), `scripts/e2e_test.py`.
 | Inspector (connected services + tool counts) | ✅ done (tool *lists/schemas* per provider not yet shown — PRD §10) |
 | Activity log | ✅ done (HTMX) |
 | **Real API: Ride (Photon + OSRM)** | ✅ done |
-| **Real API: Dine/Explore (Photon)** | ❌ todo |
-| **Real API: Stayly (Photon hotels + Amadeus)** | ❌ todo |
-| **Real API: FlyNow (real airports + Duffel)** | ❌ todo |
+| **Real API: Dine/Explore (Photon)** | ✅ done |
+| **Real API: Stayly (Photon hotels + Amadeus)** | ⚠️ Photon hotels done; Amadeus pending |
+| **Real API: FlyNow (real airports + Duffel)** | ⚠️ airports done; Duffel pending |
 | API rate-limit/timeout/fallback handling | ⚠️ Ride has cache+timeout+fallback; others pending |
 | Provider `api_backend` metadata shown in UI (PRD §32/§33) | ❌ todo |
 | Disruption recovery (PRD §25/Phase 6) | ❌ todo (stretch) |
@@ -116,15 +116,12 @@ autopilot browser smoke test (`?autopilot=1`), `scripts/e2e_test.py`.
 ## 7. Task list (detailed, in priority order)
 
 ### In progress / next
-1. **FlyNow real data** — embed real airport DB (code/city/name/lat/lon), add
-   great-circle distance + est. duration to flight results, airport autocomplete
-   in UI. *(self-contained, no network)*
-2. **Dine real data** — Photon `osm_tag=amenity:restaurant` (biased to geocoded
-   destination) → real restaurant names appended to search results; mark `source`.
-3. **Explore real data** — Photon `osm_tag=tourism:museum/attraction` → real attractions.
-4. **Stayly real data** — Photon `osm_tag=tourism:hotel` → real hotels.
-5. **Duffel scaffold (FlyNow)** — env-key-gated live client (`DUFFEL_API_KEY`) with
-   mock fallback; **needs a real test key to verify endpoint shape**.
+1. ~~FlyNow real data~~ ✅ real airports (autocomplete) + great-circle distance/duration.
+2. ~~Dine real data~~ ✅ Photon `amenity:restaurant` (real restaurants, bookable).
+3. ~~Explore real data~~ ✅ Photon `tourism:museum` (real museums, bookable).
+4. ~~Stayly real data~~ ✅ Photon `tourism:hotel` (real hotels, bookable).
+5. **Duffel scaffold (FlyNow)** — env-key-gated live client (`DUFFEL_API_KEY`) with mock
+   fallback; **needs a real test key to verify endpoint shape**.
 6. **Amadeus scaffold (Stayly)** — OAuth token + hotel-search client
    (`AMADEUS_CLIENT_ID/SECRET`) with mock fallback; **needs key to verify**.
 
