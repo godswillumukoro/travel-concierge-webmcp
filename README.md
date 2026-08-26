@@ -122,6 +122,23 @@ cd concierge && go run .   # http://localhost:8080
 
 Open **http://localhost:8080** in Chrome (with WebMCP enabled). The "Connected services" panel should show all five providers with a green dot and their tool counts.
 
+## Running with Docker
+
+Each app ships a `Dockerfile`; the parent directory has a `docker-compose.yml` that runs all six as distinct origins:
+
+```bash
+cd /Users/gogo/code          # parent of the six app directories
+cp .env.example .env         # optional: fill in API keys
+
+docker compose up --build
+# -> same URLs as above: http://localhost:8080 .. :8085
+```
+
+Notes:
+- Each service maps to its usual `localhost` port, so WebMCP's cross-origin story works unchanged (different ports = different origins, and `localhost` is a secure context).
+- `EXPOSED_ORIGINS` is set to `http://localhost:8080` for every provider, so they expose their tools to the Concierge origin.
+- Optional keys (`OPENAI_API_KEY`, `DUFFEL_API_KEY`, `AMADEUS_CLIENT_ID/SECRET`, `ORIGIN_TRIAL_TOKEN`) are read from `.env`; without them everything still runs on deterministic mock + Photon/OSRM data.
+
 ---
 
 ## Environment variables

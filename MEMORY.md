@@ -138,6 +138,8 @@ autopilot browser smoke test (`?autopilot=1`), `scripts/e2e_test.py`.
     planner rebooks the next-best flight, shifts the ride to the new arrival+45m, moves
     dinner to 9:30 PM, then prints an updated itinerary. Verified: rebooks KLM KL-578.
 12. Deployment: docker-compose / multi-origin HTTPS setup + origin-trial tokens.
+    ✅ docker-compose + per-app Dockerfiles done (parent `docker-compose.yml`).
+    Remaining: production multi-origin HTTPS (distinct domains + TLS + origin-trial tokens).
 13. Demo video + script (§39).
 
 ### Housekeeping (ongoing)
