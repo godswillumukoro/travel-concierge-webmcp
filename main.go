@@ -41,15 +41,16 @@ type provider struct {
 	Origin   string `json:"origin"`
 	Category string `json:"category"`
 	Icon     string `json:"icon"`
+	Backend  string `json:"backend"`
 }
 
 func defaultProviders() []provider {
 	return []provider{
-		{Name: "FlyNow", Origin: "http://localhost:8081", Category: "flights", Icon: "✈"},
-		{Name: "Stayly", Origin: "http://localhost:8082", Category: "stays", Icon: "🏠"},
-		{Name: "Dine", Origin: "http://localhost:8083", Category: "dining", Icon: "🍽"},
-		{Name: "Explore", Origin: "http://localhost:8084", Category: "experiences", Icon: "🎟"},
-		{Name: "Ride", Origin: "http://localhost:8085", Category: "transport", Icon: "🚕"},
+		{Name: "FlyNow", Origin: "http://localhost:8081", Category: "flights", Icon: "✈", Backend: "Duffel + real airports"},
+		{Name: "Stayly", Origin: "http://localhost:8082", Category: "stays", Icon: "🏠", Backend: "Amadeus + Photon"},
+		{Name: "Dine", Origin: "http://localhost:8083", Category: "dining", Icon: "🍽", Backend: "Photon (OSM)"},
+		{Name: "Explore", Origin: "http://localhost:8084", Category: "experiences", Icon: "🎟", Backend: "Photon (OSM)"},
+		{Name: "Ride", Origin: "http://localhost:8085", Category: "transport", Icon: "🚕", Backend: "OSRM + Photon"},
 	}
 }
 

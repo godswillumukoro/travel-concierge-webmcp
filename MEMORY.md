@@ -98,14 +98,14 @@ autopilot browser smoke test (`?autopilot=1`), `scripts/e2e_test.py`.
 | Human approval system + UI | ✅ done |
 | Cross-provider trip id (`TRIP-001`) | ✅ done |
 | Budget + threshold + itinerary card | ✅ done |
-| Inspector (connected services + tool counts) | ✅ done (tool *lists/schemas* per provider not yet shown — PRD §10) |
+| Inspector (connected services + tool counts) | ✅ done — per-provider tool list (read/write badges) on click |
 | Activity log | ✅ done (HTMX) |
 | **Real API: Ride (Photon + OSRM)** | ✅ done |
 | **Real API: Dine/Explore (Photon)** | ✅ done |
-| **Real API: Stayly (Photon hotels + Amadeus)** | ⚠️ Photon hotels done; Amadeus pending |
-| **Real API: FlyNow (real airports + Duffel)** | ⚠️ airports done; Duffel pending |
-| API rate-limit/timeout/fallback handling | ⚠️ Ride has cache+timeout+fallback; others pending |
-| Provider `api_backend` metadata shown in UI (PRD §32/§33) | ❌ todo |
+| **Real API: Stayly (Photon hotels + Amadeus)** | ✅ Photon hotels + Amadeus scaffold (needs key to verify) |
+| **Real API: FlyNow (real airports + Duffel)** | ✅ airports + Duffel scaffold (needs key to verify) |
+| API rate-limit/timeout/fallback handling | ✅ all live clients have timeout + mock fallback (caching in ride/live.go) |
+| Provider `api_backend` metadata shown in UI (PRD §32/§33) | ✅ done ("Live data: …" badge per provider) |
 | Disruption recovery (PRD §25/Phase 6) | ❌ todo (stretch) |
 | Preference-aware selection (boutique/great food) | ❌ todo (planner is golden-hardcoded) |
 | LLM mode live-tested | ❌ todo (needs key) |
@@ -120,15 +120,14 @@ autopilot browser smoke test (`?autopilot=1`), `scripts/e2e_test.py`.
 2. ~~Dine real data~~ ✅ Photon `amenity:restaurant` (real restaurants, bookable).
 3. ~~Explore real data~~ ✅ Photon `tourism:museum` (real museums, bookable).
 4. ~~Stayly real data~~ ✅ Photon `tourism:hotel` (real hotels, bookable).
-5. **Duffel scaffold (FlyNow)** — env-key-gated live client (`DUFFEL_API_KEY`) with mock
-   fallback; **needs a real test key to verify endpoint shape**.
-6. **Amadeus scaffold (Stayly)** — OAuth token + hotel-search client
-   (`AMADEUS_CLIENT_ID/SECRET`) with mock fallback; **needs key to verify**.
+5. ~~Duffel scaffold (FlyNow)~~ ✅ env-key-gated live client (`DUFFEL_API_KEY`), mock fallback.
+   **Verify endpoint shape with a real test key.**
+6. ~~Amadeus scaffold (Stayly)~~ ✅ OAuth token + hotel-search client (`AMADEUS_CLIENT_ID/SECRET`),
+   mock fallback. **Verify with a real key.**
 
 ### Then
-7. `api_backend` metadata per provider (PRD §32) + show "Live data: X" in the
-   Concierge inspector (§33).
-8. Inspector: click provider → list its tools + schemas (§10).
+7. ~~`api_backend` metadata + "Live data: X" badge~~ ✅ done.
+8. ~~Inspector: click provider → list tools (read/write badges)~~ ✅ done.
 9. Preference-aware planner (honor "boutique", "great food", "memorable") instead
    of golden-hardcoded picks.
 10. LLM mode live test + hardening (retries, malformed tool-call handling,
@@ -163,7 +162,8 @@ chrome --headless=new --enable-features=WebMCP --virtual-time-budget=25000 \
 - Providers: `EXPOSED_ORIGINS` (default `http://localhost:8080`).
 - concierge: `PROVIDERS`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`.
 - ride: uses Photon/OSRM keylessly.
-- (planned) flynow: `DUFFEL_API_KEY`; stayly: `AMADEUS_CLIENT_ID`/`AMADEUS_CLIENT_SECRET`.
+- flynow: `DUFFEL_API_KEY` (optional live offers).
+- stayly: `AMADEUS_CLIENT_ID` / `AMADEUS_CLIENT_SECRET` (optional live offers).
 
 ---
 
