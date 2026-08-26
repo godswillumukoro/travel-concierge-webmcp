@@ -71,6 +71,7 @@ type server struct {
 	apiKey    string
 	baseURL   string
 	model     string
+	planner   string // "deterministic" | "llm" | "" (auto)
 
 	mu         sync.Mutex
 	activities []activity
@@ -82,6 +83,7 @@ func main() {
 		apiKey:     os.Getenv("OPENAI_API_KEY"),
 		baseURL:    strings.TrimRight(getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"), "/"),
 		model:      getenv("OPENAI_MODEL", "gpt-4o-mini"),
+		planner:    os.Getenv("PLANNER"),
 		activities: []activity{},
 	}
 
@@ -93,10 +95,7 @@ func main() {
 	mux.HandleFunc("POST /api/activity", s.handleActivityAdd)
 
 	port := getenv("PORT", "8080")
-	log.Printf("Concierge listening on http://localhost:%s (providers: %d, model: %s)", port, len(s.providers), s.model)
-	if s.apiKey == "" {
-		log.Printf("  no OPENAI_API_KEY set -> running the deterministic planner")
-	}
+	log.Printf("Concierge listening on http://localhost:%s (providers: %d, model: %s, planner: %s)", port, len(s.providers), s.model, s.plannerMode())
 	log.Fatal(http.ListenAndServe(":"+port, withHeaders(mux)))
 }
 
@@ -249,12 +248,31 @@ func (s *server) handleAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var resp agentResponse
-	if s.apiKey != "" {
+	if s.useLLM() {
 		resp = s.llmStep(req)
 	} else {
 		resp = plannerStep(req)
 	}
 	writeJSON(w, resp)
+}
+
+// useLLM reports whether the model-driven path is active. "auto" (default)
+// uses the LLM when a key is present, otherwise the deterministic planner.
+func (s *server) useLLM() bool {
+	if s.planner == "llm" {
+		return true
+	}
+	if s.planner == "deterministic" {
+		return false
+	}
+	return s.apiKey != ""
+}
+
+func (s *server) plannerMode() string {
+	if s.useLLM() {
+		return "llm"
+	}
+	return "deterministic"
 }
 
 // ---------------------------------------------------------------------------
