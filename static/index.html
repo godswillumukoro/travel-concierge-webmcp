@@ -132,6 +132,7 @@ Tell me where you want to go, and I'll handle flights, stays, dinner, an experie
     <div class="panel" id="itinerary-panel" style="display:none;">
       <h3>Your trip</h3>
       <div id="itinerary"></div>
+      <button class="btn btn-ghost danger" id="disrupt" style="display:none;margin-top:10px;">⚠ Simulate flight cancellation</button>
     </div>
 
     <div class="panel">
@@ -169,7 +170,12 @@ const BOOKING_META = {
   book_ride: {
     idField: 'ride_id', icon: '🚕', label: 'Transfer', wrap: 'booking',
     title: b => b.ride ? b.ride.type : 'Ride',
-    detail: b => (b.pickup || '') + ' → ' + (b.dropoff || ''),
+    detail: b => (b.pickup || '') + ' → ' + (b.dropoff || '') + ' · ' + (b.datetime || '').slice(11, 16),
+  },
+  modify_ride: {
+    icon: '🚕', label: 'Transfer', wrap: 'booking',
+    title: b => b.ride ? b.ride.type : 'Ride',
+    detail: b => (b.pickup || '') + ' → ' + (b.dropoff || '') + ' · ' + (b.datetime || '').slice(11, 16),
   },
 };
 
@@ -302,7 +308,7 @@ function updateStatus() {
 // ---- approval gate ---------------------------------------------------------
 function approvalNeeded(toolName, args) {
   const meta = BOOKING_META[toolName];
-  if (!meta) return false;
+  if (!meta || !meta.idField) return false; // e.g. modify_ride is auto-approved
   const id = args[meta.idField];
   const price = priceById[id];
   if (price == null) return true; // unknown price: ask
@@ -361,13 +367,34 @@ function recordBooking(name, parsed) {
   const meta = BOOKING_META[name];
   if (!meta || !parsed) return;
   const wrap = parsed[meta.wrap];
-  if (wrap) bookings.push({ name, wrap });
+  if (!wrap) return;
+  // Replace by label so rebooking/modifying updates the itinerary in place.
+  const idx = bookings.findIndex(b => BOOKING_META[b.name].label === meta.label);
+  if (idx >= 0) bookings[idx] = { name, wrap };
+  else bookings.push({ name, wrap });
+}
+
+async function simulateDisruption() {
+  const fb = bookings.find(b => BOOKING_META[b.name].label === 'Flight');
+  const tool = tools.find(t => t.name === 'cancel_flight');
+  if (!fb || !tool) return;
+  try {
+    await execTool(tool, { booking_id: fb.wrap.booking_id });
+    logActivity(providerFor(tool), 'cancel_flight', 'ok', '✗ flight cancelled (simulated)');
+  } catch (e) {
+    logActivity(providerFor(tool), 'cancel_flight', 'error', e.message);
+  }
+  const msg = 'My flight has been cancelled. Please find a replacement and adjust my airport transfer and dinner.';
+  addMessage('user', msg);
+  messages.push({ role: 'user', content: msg });
+  runAgent();
 }
 
 // ---- itinerary -------------------------------------------------------------
 function renderItinerary() {
   if (bookings.length === 0) return;
   $('itinerary-panel').style.display = 'block';
+  $('disrupt').style.display = 'inline-block';
   let html = '<div class="itinerary">';
   let total = 0;
   for (const b of bookings) {
@@ -475,6 +502,7 @@ function send() {
 
 // ---- wiring ----------------------------------------------------------------
 $('send').onclick = send;
+$('disrupt').onclick = simulateDisruption;
 $('input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });

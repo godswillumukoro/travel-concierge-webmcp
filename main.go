@@ -383,10 +383,9 @@ var cats = []*category{
 func (c *category) byTool(name string) bool { return name == c.searchTool || name == c.bookTool }
 
 func plannerStep(req agentRequest) agentResponse {
+	// Index assistant tool calls so tool results can be linked to names/args.
 	callName := map[string]string{}
 	callArgs := map[string]map[string]any{}
-	toolContent := map[string]string{}
-
 	for _, m := range req.Messages {
 		if m.Role == "assistant" {
 			for _, tc := range m.ToolCalls {
@@ -396,33 +395,59 @@ func plannerStep(req agentRequest) agentResponse {
 				callArgs[tc.ID] = a
 			}
 		}
-		if m.Role == "tool" {
-			toolContent[m.ToolCallID] = contentString(m.Content)
-		}
 	}
 
+	// Reconstruct state by replaying messages IN ORDER (order matters for
+	// disruption recovery).
 	search := map[string]map[string]any{}
 	rejected := map[string]map[string]bool{}
 	booked := map[string]bool{}
 	bookedRes := map[string]map[string]any{}
+	disrupted := false
+	rebooked := false
+	rodeAdjusted := false
+	dinnerShifted := false
+	originalFlightID := ""
 
-	for id, name := range callName {
-		raw, ok := toolContent[id]
-		if !ok {
+	for _, m := range req.Messages {
+		if m.Role == "user" {
+			t := strings.ToLower(contentString(m.Content))
+			if strings.Contains(t, "cancel") || strings.Contains(t, "disruption") || strings.Contains(t, "rebook") {
+				disrupted = true
+			}
 			continue
 		}
-		var c *category
-		for _, cc := range cats {
-			if cc.byTool(name) {
-				c = cc
-				break
-			}
+		if m.Role != "tool" {
+			continue
 		}
+		name := callName[m.ToolCallID]
+		if name == "" {
+			continue
+		}
+		raw := contentString(m.Content)
+		var parsed map[string]any
+		_ = json.Unmarshal([]byte(raw), &parsed)
+
+		// Recovery-specific tools that aren't part of a normal category.
+		if name == "modify_ride" {
+			if parsed != nil && parsed["error"] == nil {
+				if wrap, ok := parsed["booking"].(map[string]any); ok {
+					bookedRes["ride"] = wrap
+				}
+				if disrupted {
+					rodeAdjusted = true
+				}
+			}
+			continue
+		}
+		if name == "cancel_flight" {
+			continue // the client already cancelled it; planner keys off the user message
+		}
+
+		c := catByTool(name)
 		if c == nil {
 			continue
 		}
-		var parsed map[string]any
-		_ = json.Unmarshal([]byte(raw), &parsed)
 		if name == c.searchTool {
 			search[name] = parsed
 			continue
@@ -432,7 +457,7 @@ func plannerStep(req agentRequest) agentResponse {
 				if rejected[c.key] == nil {
 					rejected[c.key] = map[string]bool{}
 				}
-				if idv, ok := callArgs[id][c.idField].(string); ok {
+				if idv, ok := callArgs[m.ToolCallID][c.idField].(string); ok {
 					rejected[c.key][idv] = true
 				}
 			}
@@ -441,6 +466,19 @@ func plannerStep(req agentRequest) agentResponse {
 		booked[c.key] = true
 		if wrap, ok := parsed[c.bookWrapKey].(map[string]any); ok {
 			bookedRes[c.key] = wrap
+			if name == "book_flight" && !disrupted {
+				if fl, ok := wrap["flight"].(map[string]any); ok {
+					originalFlightID = str(fl["id"])
+				}
+			}
+		}
+		if disrupted {
+			switch name {
+			case "book_flight":
+				rebooked = true
+			case "book_table":
+				dinnerShifted = true
+			}
 		}
 	}
 
@@ -476,7 +514,108 @@ func plannerStep(req agentRequest) agentResponse {
 		return agentResponse{Type: "tool_call", Name: c.bookTool, Arguments: c.bookArgsFn(item)}
 	}
 
+	// Phase 3: disruption recovery.
+	if disrupted {
+		return recoveryStep(search, rejected, bookedRes, originalFlightID, rebooked, rodeAdjusted, dinnerShifted, p, remaining)
+	}
+
 	return agentResponse{Type: "final", Text: finalText(bookedRes)}
+}
+
+func catByTool(name string) *category {
+	for _, c := range cats {
+		if c.byTool(name) {
+			return c
+		}
+	}
+	return nil
+}
+
+// recoveryStep drives the disruption flow: rebook a replacement flight, shift
+// the airport transfer, and move dinner later.
+func recoveryStep(search map[string]map[string]any, rejected map[string]map[string]bool, bookedRes map[string]map[string]any, originalFlightID string, rebooked, rodeAdjusted, dinnerShifted bool, p prefs, remaining int) agentResponse {
+	if !rebooked {
+		// Treat the cancelled flight as unavailable and book the next best.
+		if originalFlightID != "" {
+			if rejected["flight"] == nil {
+				rejected["flight"] = map[string]bool{}
+			}
+			rejected["flight"][originalFlightID] = true
+		}
+		items := searchItems(search["search_flights"], "flights")
+		item := pickBest(items, rejected["flight"], func(it map[string]any) int { return scoreFlight(it, p, remaining) })
+		if item == nil {
+			return agentResponse{Type: "final", Text: "I couldn't find a replacement flight. Please try again later."}
+		}
+		return agentResponse{Type: "tool_call", Name: "book_flight", Arguments: map[string]any{"flight_id": item["id"], "travelers": 2, "trip_id": "TRIP-001"}}
+	}
+	if !rodeAdjusted {
+		rid := ""
+		if w, ok := bookedRes["ride"]; ok {
+			rid = str(w["booking_id"])
+		}
+		dt := ""
+		if w, ok := bookedRes["flight"]; ok {
+			if f, ok := w["flight"].(map[string]any); ok {
+				dt = shiftTime(str(f["arrival"]), 45)
+			}
+		}
+		return agentResponse{Type: "tool_call", Name: "modify_ride", Arguments: map[string]any{"booking_id": rid, "datetime": dt}}
+	}
+	if !dinnerShifted {
+		rest := ""
+		if w, ok := bookedRes["dining"]; ok {
+			if r, ok := w["restaurant"].(map[string]any); ok {
+				rest = str(r["id"])
+			}
+		}
+		return agentResponse{Type: "tool_call", Name: "book_table", Arguments: map[string]any{"restaurant_id": rest, "date": "2026-09-16", "time": "21:30", "party_size": 2, "trip_id": "TRIP-001"}}
+	}
+	return agentResponse{Type: "final", Text: recoveryFinal(bookedRes)}
+}
+
+func shiftTime(iso string, mins int) string {
+	if iso == "" {
+		return ""
+	}
+	for _, layout := range []string{"2006-01-02T15:04", time.RFC3339} {
+		if t, err := time.Parse(layout, iso); err == nil {
+			return t.Add(time.Duration(mins) * time.Minute).Format("2006-01-02T15:04")
+		}
+	}
+	return iso
+}
+
+func recoveryFinal(res map[string]map[string]any) string {
+	var b strings.Builder
+	b.WriteString("Your flight was cancelled. I rebooked you on ")
+	if w, ok := res["flight"]; ok {
+		if f, ok := w["flight"].(map[string]any); ok {
+			b.WriteString(str(f["airline"]) + " " + str(f["flight_number"]) + " arriving " + str(f["arrival"]))
+		} else {
+			b.WriteString("a replacement flight")
+		}
+	}
+	b.WriteString(". I updated your airport transfer")
+	if w, ok := res["ride"]; ok {
+		b.WriteString(" to " + str(w["datetime"]))
+	}
+	b.WriteString(" and moved dinner to 9:30 PM")
+	if w, ok := res["dining"]; ok {
+		if r, ok := w["restaurant"].(map[string]any); ok {
+			b.WriteString(" at " + str(r["name"]))
+		}
+	}
+	b.WriteString(".\n\nUpdated trip:\n")
+	total := 0
+	for _, c := range cats {
+		if w, ok := res[c.key]; ok {
+			b.WriteString("• " + c.titleWrapFn(w) + " — $" + strconv.Itoa(num(w["price"])) + "\n")
+			total += num(w["price"])
+		}
+	}
+	b.WriteString("\nTotal: $" + strconv.Itoa(total))
+	return b.String()
 }
 
 func contentString(v any) string {

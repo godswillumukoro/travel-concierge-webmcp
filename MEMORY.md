@@ -106,7 +106,7 @@ autopilot browser smoke test (`?autopilot=1`), `scripts/e2e_test.py`.
 | **Real API: FlyNow (real airports + Duffel)** | ✅ airports + Duffel scaffold (needs key to verify) |
 | API rate-limit/timeout/fallback handling | ✅ all live clients have timeout + mock fallback (caching in ride/live.go) |
 | Provider `api_backend` metadata shown in UI (PRD §32/§33) | ✅ done ("Live data: …" badge per provider) |
-| Disruption recovery (PRD §25/Phase 6) | ❌ todo (stretch) |
+| Disruption recovery (PRD §25/Phase 6) | ✅ done — rebooks flight + shifts ride + moves dinner via a "Simulate flight cancellation" button |
 | Preference-aware selection (boutique/great food) | ✅ done — planner scores candidates by parsed preferences + rating + budget |
 | LLM mode live-tested | ❌ todo (needs key) |
 | Demo video / demo script | ❌ todo |
@@ -134,8 +134,9 @@ autopilot browser smoke test (`?autopilot=1`), `scripts/e2e_test.py`.
    luxury→premium ride, museum→Louvre).
 10. LLM mode live test + hardening (retries, malformed tool-call handling,
     `cancel_reservation` origin-collision note).
-11. Disruption recovery (Phase 6): simulate flight cancellation → rebook + shift
-    ride/dinner, ask approval.
+11. ~~Disruption recovery~~ ✅ "⚠ Simulate flight cancellation" button → cancels the flight,
+    planner rebooks the next-best flight, shifts the ride to the new arrival+45m, moves
+    dinner to 9:30 PM, then prints an updated itinerary. Verified: rebooks KLM KL-578.
 12. Deployment: docker-compose / multi-origin HTTPS setup + origin-trial tokens.
 13. Demo video + script (§39).
 
