@@ -199,6 +199,8 @@ chrome --headless=new --enable-features=WebMCP --virtual-time-budget=25000 --dum
 
 That last point is the real acceptance criterion: *within three minutes, it's clear why WebMCP matters.*
 
+> 🎬 A full, time-stamped recording script (with the optional disruption + preference demos) is in [DEMO_SCRIPT.md](DEMO_SCRIPT.md).
+
 ---
 
 ## WebMCP notes worth knowing

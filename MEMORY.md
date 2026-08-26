@@ -109,7 +109,7 @@ autopilot browser smoke test (`?autopilot=1`), `scripts/e2e_test.py`.
 | Disruption recovery (PRD §25/Phase 6) | ✅ done — rebooks flight + shifts ride + moves dinner via a "Simulate flight cancellation" button |
 | Preference-aware selection (boutique/great food) | ✅ done — planner scores candidates by parsed preferences + rating + budget |
 | LLM mode live-tested | ❌ todo (needs key) |
-| Demo video / demo script | ❌ todo |
+| Demo video / demo script | ✅ script done (DEMO_SCRIPT.md); video recording pending |
 
 ---
 
@@ -140,7 +140,8 @@ autopilot browser smoke test (`?autopilot=1`), `scripts/e2e_test.py`.
 12. Deployment: docker-compose / multi-origin HTTPS setup + origin-trial tokens.
     ✅ docker-compose + per-app Dockerfiles done (parent `docker-compose.yml`).
     Remaining: production multi-origin HTTPS (distinct domains + TLS + origin-trial tokens).
-13. Demo video + script (§39).
+13. ~~Demo video + script~~ ✅ demo script written (concierge/DEMO_SCRIPT.md, ~3 min core +
+    disruption + preferences); the video recording itself is still pending.
 
 ### Housekeeping (ongoing)
 - `git init` + commit each feat per app (DONE for baseline; continue).
