@@ -82,8 +82,8 @@ Pricing and inventory are mocked (there is no free, keyless flight/hotel booking
 | Service | Real data source |
 |---|---|
 | **Ride** | Photon place autocomplete/geocoding + OSRM road routing → real distance & duration, mock fare |
-| **FlyNow** | real airport database (codes, cities, coordinates) + great-circle distance |
-| **Stayly** | Photon `osm_tag=tourism:hotel` → real hotels near the destination |
+| **FlyNow** | real airport DB + great-circle distance + **live Duffel offers** (test mode) |
+| **Stayly** | Photon `osm_tag=tourism:hotel` (real hotels) + **live Hotelbeds offers/rates** (test sandbox) |
 | **Dine** | Photon `osm_tag=amenity:restaurant` → real restaurants |
 | **Explore** | Photon `osm_tag=tourism:attraction/museum` → real attractions |
 
@@ -137,7 +137,7 @@ docker compose up --build
 Notes:
 - Each service maps to its usual `localhost` port, so WebMCP's cross-origin story works unchanged (different ports = different origins, and `localhost` is a secure context).
 - `EXPOSED_ORIGINS` is set to `http://localhost:8080` for every provider, so they expose their tools to the Concierge origin.
-- Optional keys (`OPENAI_API_KEY`, `DUFFEL_API_KEY`, `AMADEUS_CLIENT_ID/SECRET`, `ORIGIN_TRIAL_TOKEN`) are read from `.env`; without them everything still runs on deterministic mock + Photon/OSRM data.
+- Optional keys (`OPENAI_API_KEY`, `DUFFEL_API_KEY`, `HOTELBEDS_API_KEY`/`HOTELBEDS_SECRET`, `ORIGIN_TRIAL_TOKEN`) are read from `.env`; without them everything still runs on deterministic mock + Photon/OSRM data.
 
 ---
 

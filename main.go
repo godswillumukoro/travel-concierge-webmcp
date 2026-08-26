@@ -47,7 +47,7 @@ type provider struct {
 func defaultProviders() []provider {
 	return []provider{
 		{Name: "FlyNow", Origin: "http://localhost:8081", Category: "flights", Icon: "✈", Backend: "Duffel + real airports"},
-		{Name: "Stayly", Origin: "http://localhost:8082", Category: "stays", Icon: "🏠", Backend: "Amadeus + Photon"},
+		{Name: "Stayly", Origin: "http://localhost:8082", Category: "stays", Icon: "🏠", Backend: "Hotelbeds + Photon"},
 		{Name: "Dine", Origin: "http://localhost:8083", Category: "dining", Icon: "🍽", Backend: "Photon (OSM)"},
 		{Name: "Explore", Origin: "http://localhost:8084", Category: "experiences", Icon: "🎟", Backend: "Photon (OSM)"},
 		{Name: "Ride", Origin: "http://localhost:8085", Category: "transport", Icon: "🚕", Backend: "OSRM + Photon"},

@@ -10,7 +10,7 @@
 Concierge is an **AI travel agent that plans and books a whole trip by directly
 using the WebMCP tools exposed by independent travel websites** — FlyNow
 (flights), Stayly (stays), Dine (restaurants), Explore (experiences), Ride
-(transport). The current PRD is **v2.1** (real-API data layer: Duffel, Amadeus,
+(transport). The current PRD is **v2.1** (real-API data layer: Duffel, Hotelbeds,
 Photon, OSRM).
 
 Thesis: *Websites expose capabilities via WebMCP (interoperability layer) and are
@@ -50,8 +50,8 @@ backed by real APIs (data layer); Concierge composes them.*
 - **Free keyless APIs — BLOCKED here:** Nominatim ("Access denied" policy),
   Overpass (HTTP 406). Do not rely on these.
 - **Needs keys (obtained/verified):** Duffel (flights, test mode) — verified with
-  a real key. OpenAI — verified. **Amadeus self-service portal decommissioned
-  (2025-07) → recommend Hotelbeds APItude or RapidAPI hotels instead.**
+  a real key. OpenAI — verified. Hotelbeds APItude — verified (live hotel offers).
+  Google Maps Places needs a billing key (Photon is the keyless default).
 
 ---
 
@@ -78,7 +78,7 @@ Each is its own git repo. Sibling dirs like `broadcast-box/`, `lnaudit/`,
 |---|---|---|---|---|
 | concierge | chat + approvals + itinerary + inspector + activity log (HTMX) | host: discovery + execution | n/a | agent endpoint: deterministic planner + optional OpenAI-compat LLM |
 | flynow | search/book/cancel + airport autocomplete | 6 tools | ✅ real airports + live Duffel offers (v2, verified) | mock + live airports + Duffel |
-| stayly | search/reserve/cancel | 6 tools | ✅ Photon hotels (Amadeus self-service decommissioned) | mock + live hotels |
+| stayly | search/reserve/cancel | 6 tools | ✅ Photon hotels + live Hotelbeds offers (verified) | mock + live hotels |
 | dine | search/book/cancel | 5 tools | ✅ Photon restaurants | mock + live restaurants |
 | explore | search/book/cancel | 5 tools | ✅ Photon museums | mock + live attractions |
 | ride | **autocomplete dropdown** + search/book/cancel | 5 tools | ✅ **DONE** Photon autocomplete + OSRM routing + mock fare | real geocode/route + gazetteer fallback |
@@ -102,7 +102,7 @@ autopilot browser smoke test (`?autopilot=1`), `scripts/e2e_test.py`.
 | Activity log | ✅ done (HTMX) |
 | **Real API: Ride (Photon + OSRM)** | ✅ done |
 | **Real API: Dine/Explore (Photon)** | ✅ done |
-| **Real API: Stayly (Photon hotels + Amadeus)** | ✅ Photon hotels; Amadeus self-service decommissioned → consider Hotelbeds/RapidAPI |
+| **Real API: Stayly (Photon hotels + Hotelbeds)** | ✅ verified: live Hotelbeds offers (signature auth, geolocation search) |
 | **Real API: FlyNow (real airports + Duffel)** | ✅ verified: live Duffel offers (v2, `data`-wrapped, `Duffel-Version: v2`) |
 | API rate-limit/timeout/fallback handling | ✅ all live clients have timeout + mock fallback (caching in ride/live.go) |
 | Provider `api_backend` metadata shown in UI (PRD §32/§33) | ✅ done ("Live data: …" badge per provider) |
@@ -123,10 +123,10 @@ autopilot browser smoke test (`?autopilot=1`), `scripts/e2e_test.py`.
 5. ~~Duffel scaffold (FlyNow)~~ ✅ **verified with a real key.** Fixed API drift: `Duffel-Version: v2`,
    body nested under `data`, offers on the offer_requests response (`data.offers`),
    segment-level `departing_at`/`arriving_at`/`operating_carrier_flight_number`.
-6. ~~Amadeus scaffold (Stayly)~~ ⚠️ Amadeus self-service portal decommissioned
-   (2025-07); `test.api.amadeus.com` client-credentials flow is dead. Recommend
-   **Hotelbeds APItude** (free test sandbox) or **RapidAPI hotels**; scaffold is key-gated
-   and harmless until replaced.
+6. ~~Amadeus scaffold (Stayly)~~ → replaced with **Hotelbeds APItude** (Amadeus self-service
+   decommissioned). ✅ verified with the user's test key: signature auth
+   (`X-Signature` = SHA256(key+secret+ts)), `POST /hotel-api/1.0/hotels` geolocation
+   search → real hotels + rates mapped to `Stay` (`source:"hotelbeds"`).
 
 ### Then
 7. ~~`api_backend` metadata + "Live data: X" badge~~ ✅ done.
@@ -173,7 +173,7 @@ chrome --headless=new --enable-features=WebMCP --virtual-time-budget=25000 \
 - concierge: `PROVIDERS`, `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL`.
 - ride: uses Photon/OSRM keylessly.
 - flynow: `DUFFEL_API_KEY` (optional live offers).
-- stayly: `AMADEUS_CLIENT_ID` / `AMADEUS_CLIENT_SECRET` (optional live offers).
+- stayly: `HOTELBEDS_API_KEY` / `HOTELBEDS_SECRET` (optional live offers).
 
 ---
 
