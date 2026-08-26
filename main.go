@@ -1,0 +1,613 @@
+// Concierge — an agent-native travel orchestrator powered by WebMCP.
+//
+// Concierge is a top-level web application that embeds independent travel
+// providers as cross-origin iframes, discovers their capabilities through the
+// WebMCP `document.modelContext` API, and runs an agent loop that composes
+// those capabilities to plan and book a whole trip.
+//
+// The AI loop is split between the browser and this backend:
+//
+//   - Browser: WebMCP tool discovery, tool execution, approvals, trip state.
+//   - Backend:  model calls / deterministic planning, secrets, activity log.
+//
+// By default (no API key) Concierge runs a fully deterministic planner so the
+// whole demo works offline. Set OPENAI_API_KEY to drive it with a real model.
+package main
+
+import (
+	"bytes"
+	"embed"
+	"encoding/json"
+	"html/template"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+//go:embed static
+var staticFS embed.FS
+
+// ---------------------------------------------------------------------------
+// Providers
+// ---------------------------------------------------------------------------
+
+type provider struct {
+	Name     string `json:"name"`
+	Origin   string `json:"origin"`
+	Category string `json:"category"`
+	Icon     string `json:"icon"`
+}
+
+func defaultProviders() []provider {
+	return []provider{
+		{Name: "FlyNow", Origin: "http://localhost:8081", Category: "flights", Icon: "✈"},
+		{Name: "Stayly", Origin: "http://localhost:8082", Category: "stays", Icon: "🏠"},
+		{Name: "Dine", Origin: "http://localhost:8083", Category: "dining", Icon: "🍽"},
+		{Name: "Explore", Origin: "http://localhost:8084", Category: "experiences", Icon: "🎟"},
+		{Name: "Ride", Origin: "http://localhost:8085", Category: "transport", Icon: "🚕"},
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Server
+// ---------------------------------------------------------------------------
+
+type activity struct {
+	TS       string `json:"ts"`
+	Provider string `json:"provider"`
+	Tool     string `json:"tool"`
+	Status   string `json:"status"`
+	Summary  string `json:"summary"`
+}
+
+type server struct {
+	providers []provider
+	apiKey    string
+	baseURL   string
+	model     string
+
+	mu         sync.Mutex
+	activities []activity
+}
+
+func main() {
+	s := &server{
+		providers:  loadProviders(),
+		apiKey:     os.Getenv("OPENAI_API_KEY"),
+		baseURL:    strings.TrimRight(getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"), "/"),
+		model:      getenv("OPENAI_MODEL", "gpt-4o-mini"),
+		activities: []activity{},
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", s.handleIndex)
+	mux.HandleFunc("GET /static/", serveStatic)
+	mux.HandleFunc("POST /api/agent", s.handleAgent)
+	mux.HandleFunc("GET /activity", s.handleActivityList)
+	mux.HandleFunc("POST /api/activity", s.handleActivityAdd)
+
+	port := getenv("PORT", "8080")
+	log.Printf("Concierge listening on http://localhost:%s (providers: %d, model: %s)", port, len(s.providers), s.model)
+	if s.apiKey == "" {
+		log.Printf("  no OPENAI_API_KEY set -> running the deterministic planner")
+	}
+	log.Fatal(http.ListenAndServe(":"+port, withHeaders(mux)))
+}
+
+func loadProviders() []provider {
+	if raw := os.Getenv("PROVIDERS"); raw != "" {
+		var ps []provider
+		if err := json.Unmarshal([]byte(raw), &ps); err == nil && len(ps) > 0 {
+			return ps
+		}
+		log.Printf("invalid PROVIDERS env, using defaults")
+	}
+	return defaultProviders()
+}
+
+func withHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// WebMCP requires documents to live in an origin-keyed agent cluster.
+		w.Header().Set("Origin-Agent-Cluster", "?1")
+		w.Header().Set("Cache-Control", "no-store")
+		if tok := os.Getenv("ORIGIN_TRIAL_TOKEN"); tok != "" {
+			w.Header().Set("Origin-Trial", tok)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	tpl, err := template.ParseFS(staticFS, "static/index.html")
+	if err != nil {
+		http.Error(w, err.Error(), 500)
+		return
+	}
+	providersJSON, _ := json.Marshal(s.providers)
+	cfg := map[string]any{
+		"budget":       3500,
+		"threshold":    100,
+		"llm":          s.apiKey != "",
+		"model":        s.model,
+	}
+	cfgJSON, _ := json.Marshal(cfg)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = tpl.Execute(w, map[string]any{
+		"ProvidersJSON": template.JS(providersJSON),
+		"ConfigJSON":    template.JS(cfgJSON),
+	})
+}
+
+func serveStatic(w http.ResponseWriter, r *http.Request) {
+	http.FileServer(http.FS(staticFS)).ServeHTTP(w, r)
+}
+
+// ---------------------------------------------------------------------------
+// Activity log (rendered with HTMX)
+// ---------------------------------------------------------------------------
+
+func (s *server) handleActivityAdd(w http.ResponseWriter, r *http.Request) {
+	var a activity
+	_ = json.NewDecoder(r.Body).Decode(&a)
+	a.TS = time.Now().Format("15:04:05")
+	s.mu.Lock()
+	s.activities = append([]activity{a}, s.activities...)
+	if len(s.activities) > 100 {
+		s.activities = s.activities[:100]
+	}
+	s.mu.Unlock()
+	w.WriteHeader(204)
+}
+
+func (s *server) handleActivityList(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	acts := append([]activity(nil), s.activities...)
+	s.mu.Unlock()
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if len(acts) == 0 {
+		_, _ = w.Write([]byte(`<p class="muted">No activity yet. Send a request to watch Concierge work.</p>`))
+		return
+	}
+	var b strings.Builder
+	for _, a := range acts {
+		cls := "ok"
+		if a.Status == "error" {
+			cls = "error"
+		} else if a.Status == "approval" {
+			cls = "approval"
+		}
+		b.WriteString(`<div class="act ` + cls + `"><span class="act-ts">` + a.TS + `</span><span class="act-name">` + a.Provider + `.` + a.Tool + `()</span><span class="act-sum">` + a.Summary + `</span></div>`)
+	}
+	_, _ = w.Write([]byte(b.String()))
+}
+
+// ---------------------------------------------------------------------------
+// Agent endpoint
+// ---------------------------------------------------------------------------
+
+type agentRequest struct {
+	Tools    []toolDef `json:"tools"`
+	Messages []message `json:"messages"`
+	Config   struct {
+		Budget    int `json:"budget"`
+		Threshold int `json:"threshold"`
+	} `json:"config"`
+}
+
+type toolDef struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	InputSchema json.RawMessage `json:"inputSchema"`
+	Origin      string          `json:"origin"`
+	Annotations struct {
+		ReadOnlyHint bool `json:"readOnlyHint"`
+	} `json:"annotations"`
+}
+
+type message struct {
+	Role       string     `json:"role"`
+	Content    any        `json:"content"`
+	ToolCalls  []toolCall `json:"tool_calls,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
+}
+
+type toolCall struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+type agentResponse struct {
+	Type      string         `json:"type"` // "tool_call" | "final" | "error"
+	Name      string         `json:"name,omitempty"`
+	Arguments map[string]any `json:"arguments,omitempty"`
+	Text      string         `json:"text,omitempty"`
+}
+
+func (s *server) handleAgent(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	var req agentRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, agentResponse{Type: "error", Text: "invalid request"})
+		return
+	}
+	if len(req.Tools) == 0 {
+		writeJSON(w, agentResponse{Type: "final", Text: "I couldn't discover any WebMCP tools from the connected services. Make sure the providers are running and your browser supports WebMCP."})
+		return
+	}
+	var resp agentResponse
+	if s.apiKey != "" {
+		resp = s.llmStep(req)
+	} else {
+		resp = plannerStep(req)
+	}
+	writeJSON(w, resp)
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic planner (offline demo mode)
+// ---------------------------------------------------------------------------
+
+type category struct {
+	key, searchTool, bookTool, searchKey, idField, bookWrapKey string
+	searchArgs  map[string]any
+	bookArgsFn  func(item map[string]any) map[string]any
+	titleWrapFn func(wrap map[string]any) string
+}
+
+func str(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+func num(v any) int {
+	switch x := v.(type) {
+	case float64:
+		return int(x)
+	case int:
+		return x
+	case json.Number:
+		n, _ := x.Int64()
+		return int(n)
+	}
+	return 0
+}
+
+var cats = []*category{
+	{
+		key: "flight", searchTool: "search_flights", bookTool: "book_flight",
+		searchKey: "flights", idField: "flight_id", bookWrapKey: "booking",
+		searchArgs: map[string]any{"origin": "LOS", "destination": "CDG", "departure_date": "2026-09-15", "return_date": "2026-09-20", "travelers": 2},
+		bookArgsFn: func(it map[string]any) map[string]any {
+			return map[string]any{"flight_id": it["id"], "travelers": 2, "trip_id": "TRIP-001"}
+		},
+		titleWrapFn: func(w map[string]any) string {
+			if f, ok := w["flight"].(map[string]any); ok {
+				return str(f["airline"]) + " " + str(f["flight_number"])
+			}
+			return "Flight"
+		},
+	},
+	{
+		key: "stay", searchTool: "search_stays", bookTool: "reserve_room",
+		searchKey: "stays", idField: "stay_id", bookWrapKey: "reservation",
+		searchArgs: map[string]any{"location": "Paris", "check_in": "2026-09-15", "check_out": "2026-09-20", "guests": 2},
+		bookArgsFn: func(it map[string]any) map[string]any {
+			return map[string]any{"stay_id": it["id"], "check_in": "2026-09-15", "check_out": "2026-09-20", "guests": 2, "trip_id": "TRIP-001"}
+		},
+		titleWrapFn: func(w map[string]any) string {
+			if st, ok := w["stay"].(map[string]any); ok {
+				return str(st["name"])
+			}
+			return "Stay"
+		},
+	},
+	{
+		key: "dining", searchTool: "search_restaurants", bookTool: "book_table",
+		searchKey: "restaurants", idField: "restaurant_id", bookWrapKey: "booking",
+		searchArgs: map[string]any{"location": "Paris", "date": "2026-09-16", "party_size": 2},
+		bookArgsFn: func(it map[string]any) map[string]any {
+			return map[string]any{"restaurant_id": it["id"], "date": "2026-09-16", "time": "19:30", "party_size": 2, "trip_id": "TRIP-001"}
+		},
+		titleWrapFn: func(w map[string]any) string {
+			if r, ok := w["restaurant"].(map[string]any); ok {
+				return str(r["name"])
+			}
+			return "Dinner"
+		},
+	},
+	{
+		key: "experience", searchTool: "search_experiences", bookTool: "book_experience",
+		searchKey: "experiences", idField: "experience_id", bookWrapKey: "booking",
+		searchArgs: map[string]any{"location": "Paris", "date": "2026-09-17", "travelers": 2},
+		bookArgsFn: func(it map[string]any) map[string]any {
+			return map[string]any{"experience_id": it["id"], "date": "2026-09-17", "travelers": 2, "trip_id": "TRIP-001"}
+		},
+		titleWrapFn: func(w map[string]any) string {
+			if e, ok := w["experience"].(map[string]any); ok {
+				return str(e["name"])
+			}
+			return "Experience"
+		},
+	},
+	{
+		key: "ride", searchTool: "search_rides", bookTool: "book_ride",
+		searchKey: "rides", idField: "ride_id", bookWrapKey: "booking",
+		searchArgs: map[string]any{"pickup": "CDG", "dropoff": "Hotel Lumière", "datetime": "2026-09-15T17:45", "passengers": 2},
+		bookArgsFn: func(it map[string]any) map[string]any {
+			return map[string]any{"ride_id": it["id"], "pickup": "CDG", "dropoff": "Hotel Lumière", "datetime": "2026-09-15T17:45", "passengers": 2, "trip_id": "TRIP-001"}
+		},
+		titleWrapFn: func(w map[string]any) string {
+			if r, ok := w["ride"].(map[string]any); ok {
+				return str(r["type"])
+			}
+			return "Ride"
+		},
+	},
+}
+
+func (c *category) byTool(name string) bool { return name == c.searchTool || name == c.bookTool }
+
+func plannerStep(req agentRequest) agentResponse {
+	callName := map[string]string{}
+	callArgs := map[string]map[string]any{}
+	toolContent := map[string]string{}
+
+	for _, m := range req.Messages {
+		if m.Role == "assistant" {
+			for _, tc := range m.ToolCalls {
+				callName[tc.ID] = tc.Function.Name
+				var a map[string]any
+				_ = json.Unmarshal([]byte(tc.Function.Arguments), &a)
+				callArgs[tc.ID] = a
+			}
+		}
+		if m.Role == "tool" {
+			toolContent[m.ToolCallID] = contentString(m.Content)
+		}
+	}
+
+	search := map[string]map[string]any{}
+	rejected := map[string]map[string]bool{}
+	booked := map[string]bool{}
+	bookedRes := map[string]map[string]any{}
+
+	for id, name := range callName {
+		raw, ok := toolContent[id]
+		if !ok {
+			continue
+		}
+		var c *category
+		for _, cc := range cats {
+			if cc.byTool(name) {
+				c = cc
+				break
+			}
+		}
+		if c == nil {
+			continue
+		}
+		var parsed map[string]any
+		_ = json.Unmarshal([]byte(raw), &parsed)
+		if name == c.searchTool {
+			search[name] = parsed
+			continue
+		}
+		if parsed != nil && parsed["error"] != nil {
+			if strings.Contains(raw, "rejected by user") {
+				if rejected[c.key] == nil {
+					rejected[c.key] = map[string]bool{}
+				}
+				if idv, ok := callArgs[id][c.idField].(string); ok {
+					rejected[c.key][idv] = true
+				}
+			}
+			continue
+		}
+		booked[c.key] = true
+		if wrap, ok := parsed[c.bookWrapKey].(map[string]any); ok {
+			bookedRes[c.key] = wrap
+		}
+	}
+
+	// Phase 1: search every provider.
+	for _, c := range cats {
+		if _, ok := search[c.searchTool]; !ok {
+			return agentResponse{Type: "tool_call", Name: c.searchTool, Arguments: c.searchArgs}
+		}
+	}
+
+	// Phase 2: book each category, skipping rejected options.
+	for _, c := range cats {
+		if booked[c.key] {
+			continue
+		}
+		items := searchItems(search[c.searchTool], c.searchKey)
+		item := pickItem(items, rejected[c.key])
+		if item == nil {
+			continue
+		}
+		return agentResponse{Type: "tool_call", Name: c.bookTool, Arguments: c.bookArgsFn(item)}
+	}
+
+	return agentResponse{Type: "final", Text: finalText(bookedRes)}
+}
+
+func contentString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
+func searchItems(res map[string]any, key string) []map[string]any {
+	if res == nil {
+		return nil
+	}
+	raw, ok := res[key].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(raw))
+	for _, r := range raw {
+		if m, ok := r.(map[string]any); ok {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+func pickItem(items []map[string]any, rejected map[string]bool) map[string]any {
+	for _, it := range items {
+		if rejected[str(it["id"])] {
+			continue
+		}
+		return it
+	}
+	return nil
+}
+
+func finalText(res map[string]map[string]any) string {
+	if len(res) == 0 {
+		return "I searched across the connected services but couldn't finalise any bookings. Please try again."
+	}
+	var b strings.Builder
+	b.WriteString("Your trip is booked! Summary:\n")
+	total := 0
+	for _, c := range cats {
+		if w, ok := res[c.key]; ok {
+			b.WriteString("• " + c.titleWrapFn(w) + " — $" + strconv.Itoa(num(w["price"])) + "\n")
+			total += num(w["price"])
+		}
+	}
+	b.WriteString("\nTotal: $" + strconv.Itoa(total))
+	return b.String()
+}
+
+// ---------------------------------------------------------------------------
+// LLM mode (OpenAI-compatible chat completions)
+// ---------------------------------------------------------------------------
+
+type openAITool struct {
+	Type     string `json:"type"`
+	Function struct {
+		Name        string          `json:"name"`
+		Description string          `json:"description"`
+		Parameters  json.RawMessage `json:"parameters"`
+	} `json:"function"`
+}
+
+func (s *server) llmStep(req agentRequest) agentResponse {
+	sys := "You are Concierge, an AI travel agent that plans and books a whole trip by calling WebMCP tools exposed by independent travel websites. " +
+		"Use ONLY the tools provided. Decide which tool to call next; never describe a result you did not receive from a tool. " +
+		"Book the flight, stay, dinner, experience and airport transfer for a 5-day trip to Paris for two people (Sep 15-20), keeping within budget. " +
+		"Human approval for larger purchases is handled automatically by the host — just issue the booking tool calls. " +
+		"When everything is booked, end with a concise summary. Do not call a tool twice if it already succeeded."
+
+	tools := make([]openAITool, 0, len(req.Tools))
+	for _, t := range req.Tools {
+		ot := openAITool{Type: "function"}
+		ot.Function.Name = t.Name
+		ot.Function.Description = t.Description
+		if len(t.InputSchema) == 0 {
+			ot.Function.Parameters = json.RawMessage(`{"type":"object","properties":{}}`)
+		} else {
+			ot.Function.Parameters = t.InputSchema
+		}
+		tools = append(tools, ot)
+	}
+
+	msgs := make([]message, 0, len(req.Messages)+1)
+	msgs = append(msgs, message{Role: "system", Content: sys})
+	msgs = append(msgs, req.Messages...)
+
+	body := map[string]any{
+		"model":       s.model,
+		"messages":    msgs,
+		"tools":       tools,
+		"temperature": 0.2,
+	}
+	payload, _ := json.Marshal(body)
+
+	httpReq, err := http.NewRequest("POST", s.baseURL+"/chat/completions", bytes.NewReader(payload))
+	if err != nil {
+		return agentResponse{Type: "error", Text: "failed to build request"}
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+s.apiKey)
+
+	client := &http.Client{Timeout: 60 * time.Second}
+	httpResp, err := client.Do(httpReq)
+	if err != nil {
+		return agentResponse{Type: "error", Text: "model request failed: " + err.Error()}
+	}
+	defer httpResp.Body.Close()
+	respBody, _ := io.ReadAll(io.LimitReader(httpResp.Body, 4<<20))
+
+	var parsed struct {
+		Choices []struct {
+			Message struct {
+				Content   string `json:"content"`
+				ToolCalls []struct {
+					ID       string `json:"id"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				} `json:"tool_calls"`
+			} `json:"message"`
+		} `json:"choices"`
+		Error *struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return agentResponse{Type: "error", Text: "bad model response"}
+	}
+	if parsed.Error != nil {
+		return agentResponse{Type: "error", Text: "model error: " + parsed.Error.Message}
+	}
+	if len(parsed.Choices) == 0 {
+		return agentResponse{Type: "error", Text: "model returned no choices"}
+	}
+	msg := parsed.Choices[0].Message
+	if len(msg.ToolCalls) > 0 {
+		tc := msg.ToolCalls[0]
+		var args map[string]any
+		_ = json.Unmarshal([]byte(tc.Function.Arguments), &args)
+		if args == nil {
+			args = map[string]any{}
+		}
+		return agentResponse{Type: "tool_call", Name: tc.Function.Name, Arguments: args}
+	}
+	return agentResponse{Type: "final", Text: strings.TrimSpace(msg.Content)}
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+func writeJSON(w http.ResponseWriter, v any) { _ = json.NewEncoder(w).Encode(v) }
+
+func getenv(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
