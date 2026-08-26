@@ -50,6 +50,7 @@ TOOL_ORIGIN = {
 }
 
 PROMPT = ("Plan a five-day trip to Paris for two people under $3,500. "
+          "We want a boutique stay, great food, one memorable experience and airport transport. "
           "Automatically book anything under $100 and ask me before larger purchases.")
 
 

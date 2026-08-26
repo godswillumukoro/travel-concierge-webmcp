@@ -266,6 +266,7 @@ type category struct {
 	searchArgs  map[string]any
 	bookArgsFn  func(item map[string]any) map[string]any
 	titleWrapFn func(wrap map[string]any) string
+	scoreFn     func(item map[string]any, p prefs, remaining int) int
 }
 
 func str(v any) string {
@@ -288,6 +289,19 @@ func num(v any) int {
 	return 0
 }
 
+func fnum(v any) float64 {
+	switch x := v.(type) {
+	case float64:
+		return x
+	case int:
+		return float64(x)
+	case json.Number:
+		f, _ := x.Float64()
+		return f
+	}
+	return 0
+}
+
 var cats = []*category{
 	{
 		key: "flight", searchTool: "search_flights", bookTool: "book_flight",
@@ -302,6 +316,7 @@ var cats = []*category{
 			}
 			return "Flight"
 		},
+		scoreFn: scoreFlight,
 	},
 	{
 		key: "stay", searchTool: "search_stays", bookTool: "reserve_room",
@@ -316,6 +331,7 @@ var cats = []*category{
 			}
 			return "Stay"
 		},
+		scoreFn: scoreStay,
 	},
 	{
 		key: "dining", searchTool: "search_restaurants", bookTool: "book_table",
@@ -330,6 +346,7 @@ var cats = []*category{
 			}
 			return "Dinner"
 		},
+		scoreFn: scoreDine,
 	},
 	{
 		key: "experience", searchTool: "search_experiences", bookTool: "book_experience",
@@ -344,6 +361,7 @@ var cats = []*category{
 			}
 			return "Experience"
 		},
+		scoreFn: scoreExperience,
 	},
 	{
 		key: "ride", searchTool: "search_rides", bookTool: "book_ride",
@@ -358,6 +376,7 @@ var cats = []*category{
 			}
 			return "Ride"
 		},
+		scoreFn: scoreRide,
 	},
 }
 
@@ -432,13 +451,25 @@ func plannerStep(req agentRequest) agentResponse {
 		}
 	}
 
-	// Phase 2: book each category, skipping rejected options.
+	// Phase 2: book each category, choosing the best match for the user's
+	// preferences while respecting the remaining budget.
+	p := parsePrefs(userText(req))
+	budget := req.Config.Budget
+	if budget <= 0 {
+		budget = 3500
+	}
+	remaining := budget - bookedTotal(bookedRes)
+	if remaining < 0 {
+		remaining = 0
+	}
 	for _, c := range cats {
 		if booked[c.key] {
 			continue
 		}
 		items := searchItems(search[c.searchTool], c.searchKey)
-		item := pickItem(items, rejected[c.key])
+		item := pickBest(items, rejected[c.key], func(it map[string]any) int {
+			return c.scoreFn(it, p, remaining)
+		})
 		if item == nil {
 			continue
 		}
@@ -473,14 +504,211 @@ func searchItems(res map[string]any, key string) []map[string]any {
 	return out
 }
 
-func pickItem(items []map[string]any, rejected map[string]bool) map[string]any {
+func pickBest(items []map[string]any, rejected map[string]bool, score func(map[string]any) int) map[string]any {
+	best := -1 << 30
+	var bestItem map[string]any
 	for _, it := range items {
 		if rejected[str(it["id"])] {
 			continue
 		}
-		return it
+		if s := score(it); s > best {
+			best = s
+			bestItem = it
+		}
 	}
-	return nil
+	return bestItem
+}
+
+func userText(req agentRequest) string {
+	for _, m := range req.Messages {
+		if m.Role == "user" {
+			return contentString(m.Content)
+		}
+	}
+	return ""
+}
+
+func bookedTotal(res map[string]map[string]any) int {
+	total := 0
+	for _, w := range res {
+		total += num(w["price"])
+	}
+	return total
+}
+
+type prefs struct {
+	stay       []string
+	dine       []string
+	experience []string
+	greatFood  bool
+	memorable  bool
+	flight     string
+	// ride: "" (default private) | "cheap" | "luxury" | "private"
+	typ        string
+}
+
+// parsePrefs extracts preference signals from the user's request.
+func parsePrefs(text string) prefs {
+	t := strings.ToLower(text)
+	var p prefs
+	if strings.Contains(t, "boutique") {
+		p.stay = append(p.stay, "boutique")
+	}
+	if strings.Contains(t, "luxury") || strings.Contains(t, "5-star") || strings.Contains(t, "five star") {
+		p.stay = append(p.stay, "luxury")
+		p.typ = "luxury"
+	}
+	if strings.Contains(t, "apartment") {
+		p.stay = append(p.stay, "apartment")
+	}
+	if strings.Contains(t, "cheap") || strings.Contains(t, "budget") {
+		p.stay = append(p.stay, "cheap")
+		p.typ = "cheap"
+	}
+	if strings.Contains(t, "private") {
+		p.typ = "private"
+	}
+	if strings.Contains(t, "great food") || strings.Contains(t, "good food") || strings.Contains(t, "foodie") ||
+		strings.Contains(t, "best food") || strings.Contains(t, "amazing food") {
+		p.greatFood = true
+	}
+	for _, c := range []string{"french", "italian", "japanese", "chinese", "mexican", "indian", "thai", "seafood", "steak", "african", "nigerian"} {
+		if strings.Contains(t, c) {
+			p.dine = append(p.dine, c)
+		}
+	}
+	if strings.Contains(t, "memorable") || strings.Contains(t, "iconic") || strings.Contains(t, "famous") || strings.Contains(t, "unforgettable") {
+		p.memorable = true
+	}
+	for _, k := range []string{"museum", "cruise", "adventure", "food tour", "relax"} {
+		if strings.Contains(t, k) {
+			p.experience = append(p.experience, k)
+		}
+	}
+	if strings.Contains(t, "direct") || strings.Contains(t, "nonstop") {
+		p.flight = "direct"
+	}
+	if strings.Contains(t, "business") || strings.Contains(t, "first class") {
+		p.flight = "business"
+	}
+	if strings.Contains(t, "cheapest") || strings.Contains(t, "lowest price") {
+		p.flight = "cheapest"
+	}
+	return p
+}
+
+func scoreFlight(it map[string]any, p prefs, remaining int) int {
+	price := num(it["price"])
+	if price > remaining {
+		return -2000
+	}
+	switch p.flight {
+	case "cheapest":
+		return -price
+	case "direct":
+		if num(it["stops"]) == 0 {
+			return 100 - price/100
+		}
+		return -price / 50
+	case "business":
+		if strings.Contains(strings.ToLower(str(it["cabin"])), "business") {
+			return 100 - price/100
+		}
+		return -price / 50
+	}
+	s := 0
+	stops := num(it["stops"])
+	if b, ok := it["refundable"].(bool); ok && b {
+		s += 30
+	}
+	s -= stops * 20
+	s -= price / 100
+	return s
+}
+
+func scoreStay(it map[string]any, p prefs, remaining int) int {
+	s := int(fnum(it["rating"]) * 20)
+	hay := strings.ToLower(str(it["name"]) + " " + str(it["type"]) + " " + str(it["neighborhood"]))
+	for _, kw := range p.stay {
+		if strings.Contains(hay, kw) {
+			s += 100
+		}
+	}
+	price := num(it["price"])
+	s -= price / 60
+	if price > remaining {
+		s -= 2000
+	}
+	return s
+}
+
+func scoreDine(it map[string]any, p prefs, remaining int) int {
+	s := int(fnum(it["rating"]) * 10)
+	if p.greatFood {
+		s += int(fnum(it["rating"]) * 10)
+	}
+	hay := strings.ToLower(str(it["name"]) + " " + str(it["cuisine"]) + " " + str(it["neighborhood"]))
+	for _, kw := range p.dine {
+		if strings.Contains(hay, kw) {
+			s += 100
+		}
+	}
+	price := num(it["price"])
+	s -= price / 60
+	if price > remaining {
+		s -= 2000
+	}
+	return s
+}
+
+func scoreExperience(it map[string]any, p prefs, remaining int) int {
+	s := int(fnum(it["rating"]) * 10)
+	if p.memorable {
+		s += int(fnum(it["rating"]) * 10)
+	}
+	hay := strings.ToLower(str(it["name"]) + " " + str(it["category"]) + " " + str(it["duration"]))
+	for _, kw := range p.experience {
+		if strings.Contains(hay, kw) {
+			s += 100
+		}
+	}
+	price := num(it["price"])
+	s -= price / 60
+	if price > remaining {
+		s -= 2000
+	}
+	return s
+}
+
+func scoreRide(it map[string]any, p prefs, remaining int) int {
+	t := strings.ToLower(str(it["type"]))
+	switch p.typ {
+	case "cheap":
+		if strings.Contains(t, "share") {
+			return 100
+		}
+		return 0
+	case "luxury":
+		if strings.Contains(t, "premium") {
+			return 100
+		}
+		return 0
+	case "private":
+		if strings.Contains(t, "private") {
+			return 100
+		}
+		return 0
+	}
+	if strings.Contains(t, "private") {
+		return 50
+	}
+	if strings.Contains(t, "premium") {
+		return 30
+	}
+	if strings.Contains(t, "share") {
+		return 10
+	}
+	return 0
 }
 
 func finalText(res map[string]map[string]any) string {

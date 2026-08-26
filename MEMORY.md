@@ -107,7 +107,7 @@ autopilot browser smoke test (`?autopilot=1`), `scripts/e2e_test.py`.
 | API rate-limit/timeout/fallback handling | ✅ all live clients have timeout + mock fallback (caching in ride/live.go) |
 | Provider `api_backend` metadata shown in UI (PRD §32/§33) | ✅ done ("Live data: …" badge per provider) |
 | Disruption recovery (PRD §25/Phase 6) | ❌ todo (stretch) |
-| Preference-aware selection (boutique/great food) | ❌ todo (planner is golden-hardcoded) |
+| Preference-aware selection (boutique/great food) | ✅ done — planner scores candidates by parsed preferences + rating + budget |
 | LLM mode live-tested | ❌ todo (needs key) |
 | Demo video / demo script | ❌ todo |
 
@@ -128,8 +128,10 @@ autopilot browser smoke test (`?autopilot=1`), `scripts/e2e_test.py`.
 ### Then
 7. ~~`api_backend` metadata + "Live data: X" badge~~ ✅ done.
 8. ~~Inspector: click provider → list tools (read/write badges)~~ ✅ done.
-9. Preference-aware planner (honor "boutique", "great food", "memorable") instead
-   of golden-hardcoded picks.
+9. ~~Preference-aware planner~~ ✅ parses preferences (boutique/great food/memorable/
+   luxury/cheapest/direct/museum…) and scores candidates by rating + keywords + budget.
+   Golden picks still resolve for the golden prompt; variations verified (cheapest→Turkish,
+   luxury→premium ride, museum→Louvre).
 10. LLM mode live test + hardening (retries, malformed tool-call handling,
     `cancel_reservation` origin-collision note).
 11. Disruption recovery (Phase 6): simulate flight cancellation → rebook + shift
