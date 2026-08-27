@@ -178,7 +178,6 @@ chrome --headless=new --enable-features=WebMCP --virtual-time-budget=25000 \
 ---
 
 ## 9. Gotchas / lessons
-
 - **`go run` orphans compiled children** — killing the parent leaves the port bound.
   Always use `scripts/stop.sh` (kills by port) or `lsof -tiTCP:PORT`.
 - **Gazetteer map iteration is random in Go** — never substring-match by ranging a
@@ -189,3 +188,6 @@ chrome --headless=new --enable-features=WebMCP --virtual-time-budget=25000 \
   `osm_tag=tourism:hotel` filter.
 - Chrome needs `--enable-features=WebMCP` (or origin trial) — `document.modelContext`
   is otherwise `undefined`; the concierge UI shows a banner when missing.
+- **Human UI vs agent JSON parity** — the HTMX `/search` handlers and the JSON
+  `/api/*` handlers must BOTH do live enrichment, or the human UI shows mock-only.
+  Fixed: both now include Duffel/Hotelbeds/Photon with a "live · X" badge.
