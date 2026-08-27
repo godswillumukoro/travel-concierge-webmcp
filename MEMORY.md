@@ -178,6 +178,16 @@ chrome --headless=new --enable-features=WebMCP --virtual-time-budget=25000 \
 ---
 
 ## 9. Gotchas / lessons
+
+- **Human UI is now live-only.** The HTMX `/search` handlers return ONLY live API
+  data (Duffel / Hotelbeds / Photon) with real photos (Wikimedia Commons) + a
+  carousel, and type-ahead location/airport autocomplete. The mock/golden data
+  now lives ONLY in the agent's JSON `/api/*` endpoints (the deterministic
+  planner's controlled demo scenario). Shared per-provider files: `images.go`,
+  `static/common.css`, `static/common.js`, and `live.go`'s `handlePlaces`.
+- **Photos are fetched client-side, lazily** (`/api/images?q=…` proxies Wikimedia
+  Commons) after each HTMX swap; the first image is the thumbnail, the set powers
+  the carousel. Images are cached server-side and fail gracefully to "no photo".
 - **`go run` orphans compiled children** — killing the parent leaves the port bound.
   Always use `scripts/stop.sh` (kills by port) or `lsof -tiTCP:PORT`.
 - **Gazetteer map iteration is random in Go** — never substring-match by ranging a
