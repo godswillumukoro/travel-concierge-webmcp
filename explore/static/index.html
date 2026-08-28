@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Explore — Experiences</title>
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<script src="/static/common.js"></script>
+<style>
+:root { --ink:#1a2238; --muted:#6b7280; --line:#e5e7eb; --accent:#7c3aed; --bg:#faf5ff; }
+* { box-sizing:border-box; }
+body { font-family:system-ui,-apple-system,sans-serif; color:var(--ink); background:var(--bg); margin:0; padding:24px; max-width:880px; margin-inline:auto; }
+header { display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); padding-bottom:12px; margin-bottom:20px; }
+h1 { font-size:22px; margin:0; }
+h2 { font-size:14px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:24px 0 8px; }
+.badge-webmcp { font-size:12px; padding:4px 10px; border-radius:999px; background:#f3e8ff; color:#6d28d9; }
+.badge-webmcp.off { background:#fee2e2; color:#b91c1c; }
+form.search { display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:8px; }
+form.search input { padding:8px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
+.card { border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:10px; background:#fff; }
+.card-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.row { font-size:14px; margin-top:4px; }
+.muted { color:var(--muted); }
+.price { font-weight:700; color:var(--accent); }
+.badge { font-size:11px; padding:2px 8px; border-radius:6px; background:#ecfdf5; color:#047857; }
+.btn { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:8px 12px; font-size:13px; cursor:pointer; }
+.btn-ghost { background:#fff; color:var(--accent); border:1px solid var(--accent); }
+footer { margin-top:32px; font-size:12px; color:var(--muted); }
+</style>
+<link rel="stylesheet" href="/static/common.css">
+</head>
+<body>
+<header>
+  <h1>🎟 Explore</h1>
+  <span class="badge-webmcp" id="webmcp-badge">WebMCP: detecting…</span>
+</header>
+
+<section>
+  <h2>Discover experiences</h2>
+  <form class="search" hx-post="/search" hx-target="#results" hx-swap="innerHTML">
+    <div class="ac">
+      <input name="location" id="location" placeholder="Where? e.g. Paris" autocomplete="off">
+      <div class="ac-list" id="location-list" style="display:none"></div>
+    </div>
+    <input name="date" type="date" value="2026-09-17">
+    <input name="travelers" type="number" value="2" min="1">
+    <button class="btn" type="submit">Search</button>
+  </form>
+  <div id="results" style="margin-top:12px;"></div>
+</section>
+
+<section>
+  <details class="history">
+    <summary>🕘 History <span class="muted">— your bookings (agents book here too)</span></summary>
+    <div id="bookings" hx-get="/bookings" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
+  </details>
+</section>
+
+<footer>Explore · independent WebMCP travel provider · human &amp; agent share one state</footer>
+
+<script>
+(function () {
+  const EXPOSED_ORIGINS = {{.ExposedOriginsJS}};
+
+  async function post(url, body) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { error: data.error || ('HTTP ' + res.status) };
+    return data;
+  }
+
+  const tools = [
+    {
+      name: 'search_experiences',
+      title: 'Search experiences',
+      description: 'Search activities and experiences in a location for a date and number of travelers. Returns experiences with id, name, category and total price.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          location: { type: 'string' },
+          date: { type: 'string', description: 'YYYY-MM-DD' },
+          travelers: { type: 'integer' },
+        },
+        required: ['location'],
+      },
+      annotations: { readOnlyHint: true },
+      execute: async (input) => post('/api/search_experiences', input),
+    },
+    {
+      name: 'get_experience_details',
+      title: 'Get experience details',
+      description: 'Return details for a single experience given its id.',
+      inputSchema: { type: 'object', properties: { experience_id: { type: 'string' } }, required: ['experience_id'] },
+      annotations: { readOnlyHint: true },
+      execute: async (input) => post('/api/get_experience_details', input),
+    },
+    {
+      name: 'check_experience_availability',
+      title: 'Check experience availability',
+      description: 'Check availability and total price for an experience on a date.',
+      inputSchema: {
+        type: 'object',
+        properties: { experience_id: { type: 'string' }, date: { type: 'string' }, travelers: { type: 'integer' } },
+        required: ['experience_id'],
+      },
+      annotations: { readOnlyHint: true },
+      execute: async (input) => post('/api/check_experience_availability', input),
+    },
+    {
+      name: 'book_experience',
+      title: 'Book an experience',
+      description: 'Book an experience, associating it with a trip_id. Returns the confirmed booking with total price.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          experience_id: { type: 'string' },
+          date: { type: 'string' },
+          travelers: { type: 'integer' },
+          trip_id: { type: 'string' },
+        },
+        required: ['experience_id'],
+      },
+      annotations: { readOnlyHint: false },
+      execute: async (input) => post('/api/book_experience', input),
+    },
+    {
+      name: 'cancel_booking',
+      title: 'Cancel an experience booking',
+      description: 'Cancel an existing experience booking by booking_id.',
+      inputSchema: { type: 'object', properties: { booking_id: { type: 'string' } }, required: ['booking_id'] },
+      annotations: { readOnlyHint: false },
+      execute: async (input) => post('/api/cancel_booking', input),
+    },
+  ];
+
+  async function register() {
+    const badge = document.getElementById('webmcp-badge');
+    if (!('modelContext' in document)) {
+      badge.textContent = 'WebMCP: unavailable';
+      badge.classList.add('off');
+      return;
+    }
+    let ok = 0;
+    for (const t of tools) {
+      try {
+        await document.modelContext.registerTool(t, { exposedTo: EXPOSED_ORIGINS });
+        ok++;
+      } catch (e) { console.warn('registerTool failed for', t.name, e); }
+    }
+    badge.textContent = 'WebMCP: ' + ok + '/' + tools.length + ' tools exposed';
+    if (ok === 0) badge.classList.add('off');
+  }
+
+  register();
+})();
+</script>
+<script>attachAutocomplete('location', 'location-list', '/api/places?q=');</script>
+<div class="lb" id="lightbox">
+  <button class="lb-close">×</button>
+  <button class="lb-prev">‹</button>
+  <img src="" alt="">
+  <button class="lb-next">›</button>
+  <div class="lb-count"></div>
+</div>
+</body>
+</html>

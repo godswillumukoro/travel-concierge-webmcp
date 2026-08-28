@@ -1,0 +1,36 @@
+/* Shared search-result / autocomplete / carousel styles (loaded after the
+   provider's own CSS so it overrides .card). */
+
+.ac { position:relative; }
+.ac input { width:100%; box-sizing:border-box; }
+form.search { align-items:center; }
+.ac-list { position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid var(--line); border-radius:8px; margin-top:4px; z-index:50; box-shadow:0 10px 30px rgba(0,0,0,.12); max-height:280px; overflow:auto; }
+.ac-item { padding:8px 10px; font-size:13.5px; cursor:pointer; border-bottom:1px solid #f1f5f9; }
+.ac-item:last-child { border-bottom:0; }
+.ac-item:hover { background:#f0f9ff; }
+.ac-item .sub { color:var(--muted); font-size:12px; display:block; }
+
+.card:has(.card-img) { display:flex; padding:0; border-radius:12px; overflow:hidden; }
+.card-img { width:130px; min-height:130px; flex-shrink:0; background:#eef2f7 center/cover no-repeat; cursor:zoom-in; display:flex; align-items:center; justify-content:center; color:#94a3b8; font-size:12px; }
+.card-body { flex:1; padding:12px 14px; min-width:0; }
+.card-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.card-top strong { flex:1; }
+.price { font-weight:700; color:var(--accent); }
+.badge { font-size:11px; padding:2px 8px; border-radius:6px; background:#dbeafe; color:#1d4ed8; }
+.row { font-size:14px; margin-top:4px; }
+.muted { color:var(--muted); }
+.card .btn { margin-top:8px; }
+
+.lb { position:fixed; inset:0; background:rgba(8,10,20,.88); z-index:1000; display:none; align-items:center; justify-content:center; }
+.lb.open { display:flex; }
+.lb img { max-width:88vw; max-height:80vh; border-radius:10px; box-shadow:0 20px 60px rgba(0,0,0,.5); }
+.lb button { position:absolute; color:#fff; background:rgba(255,255,255,.12); border:0; font-size:26px; cursor:pointer; border-radius:50%; width:46px; height:46px; line-height:1; }
+.lb button:hover { background:rgba(255,255,255,.25); }
+.lb-close { top:16px; right:16px; }
+.lb-prev { left:16px; top:50%; transform:translateY(-50%); }
+.lb-next { right:16px; top:50%; transform:translateY(-50%); }
+.lb-count { position:absolute; bottom:18px; left:50%; transform:translateX(-50%); color:#fff; font-size:13px; }
+
+details.history { margin-top:4px; }
+details.history summary { cursor:pointer; font-size:13px; font-weight:600; color:var(--muted); user-select:none; }
+details.history summary:hover { color:var(--ink); }

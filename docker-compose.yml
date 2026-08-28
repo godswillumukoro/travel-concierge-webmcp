@@ -1,0 +1,71 @@
+# Concierge ecosystem — 6 independent Go services, one per origin (localhost:PORT).
+#
+# Each app is self-hostable; this compose file just runs them together so the
+# browser can treat them as distinct cross-origin websites (which is exactly
+# what WebMCP's cross-origin iframe story needs).
+#
+# Usage:
+#   docker compose up --build
+#   open http://localhost:8080 in Chrome launched with --enable-features=WebMCP
+#
+# Optional keys: copy .env.example to .env and fill in what you need.
+
+services:
+  flynow:
+    build: ./flynow
+    environment:
+      PORT: "8081"
+      EXPOSED_ORIGINS: http://localhost:8080
+      ORIGIN_TRIAL_TOKEN: ${ORIGIN_TRIAL_TOKEN:-}
+      DUFFEL_API_KEY: ${DUFFEL_API_KEY:-}
+    ports: ["8081:8081"]
+
+  stayly:
+    build: ./stayly
+    environment:
+      PORT: "8082"
+      EXPOSED_ORIGINS: http://localhost:8080
+      ORIGIN_TRIAL_TOKEN: ${ORIGIN_TRIAL_TOKEN:-}
+      HOTELBEDS_API_KEY: ${HOTELBEDS_API_KEY:-}
+      HOTELBEDS_SECRET: ${HOTELBEDS_SECRET:-}
+    ports: ["8082:8082"]
+
+  dine:
+    build: ./dine
+    environment:
+      PORT: "8083"
+      EXPOSED_ORIGINS: http://localhost:8080
+      ORIGIN_TRIAL_TOKEN: ${ORIGIN_TRIAL_TOKEN:-}
+    ports: ["8083:8083"]
+
+  explore:
+    build: ./explore
+    environment:
+      PORT: "8084"
+      EXPOSED_ORIGINS: http://localhost:8080
+      ORIGIN_TRIAL_TOKEN: ${ORIGIN_TRIAL_TOKEN:-}
+    ports: ["8084:8084"]
+
+  ride:
+    build: ./ride
+    environment:
+      PORT: "8085"
+      EXPOSED_ORIGINS: http://localhost:8080
+      ORIGIN_TRIAL_TOKEN: ${ORIGIN_TRIAL_TOKEN:-}
+    ports: ["8085:8085"]
+
+  concierge:
+    build: ./concierge
+    environment:
+      PORT: "8080"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+      ORIGIN_TRIAL_TOKEN: ${ORIGIN_TRIAL_TOKEN:-}
+    ports: ["8080:8080"]
+    depends_on:
+      - flynow
+      - stayly
+      - dine
+      - explore
+      - ride

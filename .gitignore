@@ -1,0 +1,6 @@
+# secrets
+.env
+# build artifacts
+*.exe
+bin/
+.DS_Store

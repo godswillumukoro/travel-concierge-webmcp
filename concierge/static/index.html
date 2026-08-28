@@ -1,0 +1,536 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concierge — Your trip. One conversation.</title>
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<style>
+:root {
+  --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f8fafc; --card:#ffffff;
+  --accent:#4f46e5; --accent2:#6366f1; --ok:#059669; --warn:#d97706; --err:#dc2626;
+}
+* { box-sizing:border-box; }
+html,body { height:100%; }
+body { margin:0; font-family:system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--ink); background:var(--bg); }
+header { display:flex; align-items:center; justify-content:space-between; padding:12px 20px; border-bottom:1px solid var(--line); background:var(--card); }
+.brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:18px; }
+.brand .logo { width:32px; height:32px; border-radius:9px; background:linear-gradient(135deg,var(--accent),#9333ea); color:#fff; display:grid; place-items:center; }
+.tagline { color:var(--muted); font-size:13px; font-weight:400; }
+.header-actions { display:flex; gap:8px; }
+button { font-family:inherit; cursor:pointer; }
+.btn { background:var(--accent); color:#fff; border:0; border-radius:10px; padding:9px 14px; font-size:14px; }
+.btn:hover { background:var(--accent2); }
+.btn-ghost { background:#fff; color:var(--accent); border:1px solid var(--accent); }
+.btn-ghost.danger { color:var(--err); border-color:var(--err); }
+.btn:disabled { opacity:.5; cursor:not-allowed; }
+.iconbtn { background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px 12px; font-size:15px; }
+
+.layout { display:grid; grid-template-columns: minmax(0,1fr) 360px; gap:16px; padding:16px 20px; height:calc(100vh - 58px); }
+@media (max-width:900px){ .layout { grid-template-columns:1fr; height:auto; } .side { order:2; } }
+
+.chat { display:flex; flex-direction:column; background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; }
+.messages { flex:1; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:12px; }
+.msg { max-width:78%; padding:10px 14px; border-radius:14px; font-size:14.5px; line-height:1.5; white-space:pre-wrap; }
+.msg.user { align-self:flex-end; background:var(--accent); color:#fff; border-bottom-right-radius:4px; }
+.msg.agent { align-self:flex-start; background:#eef2ff; border-bottom-left-radius:4px; }
+.msg.system { align-self:center; background:#f1f5f9; color:var(--muted); font-size:13px; }
+.msg.approval { align-self:flex-start; background:#fff7ed; border:1px solid #fed7aa; width:100%; max-width:100%; }
+.approval h4 { margin:0 0 6px; font-size:14px; }
+.approval .row { font-size:13.5px; color:#374151; margin:2px 0; }
+.approval .price { font-weight:700; font-size:16px; }
+.approval .actions { display:flex; gap:8px; margin-top:10px; }
+.inputbar { display:flex; gap:8px; padding:12px; border-top:1px solid var(--line); }
+.inputbar textarea { flex:1; resize:none; border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:14px; font-family:inherit; height:46px; }
+.quick { display:flex; gap:8px; padding:0 12px 12px; flex-wrap:wrap; }
+.quick button { background:#fff; border:1px solid var(--line); border-radius:999px; padding:6px 12px; font-size:12.5px; color:var(--muted); }
+.quick button:hover { border-color:var(--accent); color:var(--accent); }
+
+.side { display:flex; flex-direction:column; gap:16px; overflow-y:auto; }
+.panel { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; }
+.panel h3 { margin:0 0 10px; font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); }
+.provider { border:1px solid var(--line); border-radius:10px; margin-bottom:10px; overflow:hidden; }
+.provider-head { display:flex; align-items:center; gap:8px; padding:9px 11px; background:#fbfcfe; }
+.provider-head .name { font-weight:600; font-size:14px; }
+.provider-head .meta { margin-left:auto; font-size:12px; color:var(--muted); }
+.dot { width:8px; height:8px; border-radius:50%; background:#cbd5e1; display:inline-block; }
+.dot.on { background:var(--ok); box-shadow:0 0 0 3px #d1fae5; }
+.dot.off { background:var(--err); box-shadow:0 0 0 3px #fee2e2; }
+.provider iframe { width:100%; height:120px; border:0; display:block; background:#fff; }
+.provider-backend { font-size:11px; color:var(--muted); padding:5px 11px 0; }
+.provider-head { cursor:pointer; }
+.provider-tools { border-top:1px solid var(--line); padding:8px 11px; }
+.tool-line { padding:5px 0; border-bottom:1px dashed var(--line); }
+.tool-line:last-child { border-bottom:0; }
+.tool-name { font-family:ui-monospace,monospace; font-size:12.5px; font-weight:600; }
+.tool-ro { font-size:10px; padding:1px 6px; border-radius:5px; margin-left:6px; vertical-align:1px; }
+.tool-ro.read { background:#dbeafe; color:#1d4ed8; }
+.tool-ro.write { background:#fee2e2; color:#b91c1c; }
+.tool-desc { display:block; font-size:11.5px; color:var(--muted); margin-top:1px; }
+.act { font-size:12.5px; padding:5px 8px; border-left:3px solid var(--ok); background:#f8fafc; margin-bottom:4px; border-radius:4px; }
+.act.error { border-left-color:var(--err); background:#fef2f2; }
+.act.approval { border-left-color:var(--warn); background:#fffbeb; }
+.act-ts { color:var(--muted); margin-right:6px; font-variant-numeric:tabular-nums; }
+.act-name { font-family:ui-monospace,monospace; font-weight:600; }
+.act-sum { color:var(--muted); margin-left:6px; }
+
+.itinerary { border:1px solid var(--line); border-radius:10px; }
+.it-line { display:flex; align-items:center; gap:10px; padding:9px 12px; border-bottom:1px solid var(--line); }
+.it-line:last-child { border-bottom:0; }
+.it-line .ic { font-size:18px; }
+.it-line .t { flex:1; font-size:13.5px; font-weight:600; }
+.it-line .d { color:var(--muted); font-size:12px; display:block; }
+.it-line .p { font-weight:700; }
+.it-total { display:flex; justify-content:space-between; padding:10px 12px; background:#f8fafc; border-radius:0 0 10px 10px; font-size:13.5px; }
+.it-total .remaining { color:var(--ok); font-weight:700; }
+.muted { color:var(--muted); }
+.banner { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; border-radius:10px; padding:10px 12px; font-size:13px; }
+.settings { display:none; margin-top:10px; }
+.settings.open { display:block; }
+.settings label { display:block; font-size:12.5px; color:var(--muted); margin:8px 0 3px; }
+.settings input { width:100%; padding:8px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><span class="logo">✦</span> Concierge <span class="tagline">— Your trip. One conversation.</span></div>
+  <div class="header-actions">
+    <button class="iconbtn" id="btn-services" title="Connected services">⚙ Services</button>
+  </div>
+</header>
+
+<div class="layout">
+  <div class="chat">
+    <div class="messages" id="messages">
+      <div class="msg agent">Hi, I'm Concierge. I can plan and book an entire trip by directly using the WebMCP tools exposed by independent travel sites — FlyNow, Stayly, Dine, Explore and Ride.
+
+Tell me where you want to go, and I'll handle flights, stays, dinner, an experience and airport transport.</div>
+    </div>
+    <div class="quick">
+      <button data-prompt="Plan a five-day trip to Paris for two people under $3,500. We want a boutique stay, great food, one memorable experience and airport transport. Automatically book anything under $100 and ask me before larger purchases.">Plan my trip to Paris</button>
+      <button data-prompt="Find flights and a boutique hotel in Paris for two, Sep 15–20.">Flights + hotel</button>
+    </div>
+    <div class="inputbar">
+      <textarea id="input" placeholder="Where would you like to go?"></textarea>
+      <button class="btn" id="send">Send ➤</button>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="panel" id="services-panel">
+      <h3>Connected services</h3>
+      <div id="webmcp-status" class="muted" style="font-size:12.5px;margin-bottom:10px;">Detecting WebMCP…</div>
+      <div id="providers"></div>
+      <div class="settings" id="settings">
+        <label>Budget (USD)</label>
+        <input type="number" id="cfg-budget" value="3500">
+        <label>Auto-book under (USD)</label>
+        <input type="number" id="cfg-threshold" value="100">
+      </div>
+    </div>
+
+    <div class="panel" id="itinerary-panel" style="display:none;">
+      <h3>Your trip</h3>
+      <div id="itinerary"></div>
+      <button class="btn btn-ghost danger" id="disrupt" style="display:none;margin-top:10px;">⚠ Simulate flight cancellation</button>
+    </div>
+
+    <div class="panel">
+      <h3>Agent activity</h3>
+      <div id="activity" hx-get="/activity" hx-trigger="load, every 1s" hx-swap="innerHTML"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PROVIDERS = {{.ProvidersJSON}};
+const INIT = {{.ConfigJSON}};
+
+const BOOKING_META = {
+  book_flight: {
+    idField: 'flight_id', icon: '✈', label: 'Flight', wrap: 'booking',
+    title: b => b.flight ? (b.flight.airline + ' ' + b.flight.flight_number) : 'Flight',
+    detail: b => b.flight ? (b.flight.origin + ' → ' + b.flight.destination + ' · ' + (b.flight.departure || '').slice(0, 10)) : '',
+  },
+  reserve_room: {
+    idField: 'stay_id', icon: '🏠', label: 'Stay', wrap: 'reservation',
+    title: b => b.stay ? b.stay.name : 'Stay',
+    detail: b => (b.check_in || '') + ' → ' + (b.check_out || '') + ' · ' + (b.nights || '') + ' nights',
+  },
+  book_table: {
+    idField: 'restaurant_id', icon: '🍽', label: 'Dinner', wrap: 'booking',
+    title: b => b.restaurant ? b.restaurant.name : 'Dinner',
+    detail: b => (b.date || '') + ' ' + (b.time || '') + ' · ' + (b.party_size || '') + ' guests',
+  },
+  book_experience: {
+    idField: 'experience_id', icon: '🎟', label: 'Experience', wrap: 'booking',
+    title: b => b.experience ? b.experience.name : 'Experience',
+    detail: b => (b.date || '') + ' · ' + (b.travelers || '') + ' travelers',
+  },
+  book_ride: {
+    idField: 'ride_id', icon: '🚕', label: 'Transfer', wrap: 'booking',
+    title: b => b.ride ? b.ride.type : 'Ride',
+    detail: b => (b.pickup || '') + ' → ' + (b.dropoff || '') + ' · ' + (b.datetime || '').slice(11, 16),
+  },
+  modify_ride: {
+    icon: '🚕', label: 'Transfer', wrap: 'booking',
+    title: b => b.ride ? b.ride.type : 'Ride',
+    detail: b => (b.pickup || '') + ' → ' + (b.dropoff || '') + ' · ' + (b.datetime || '').slice(11, 16),
+  },
+};
+
+let tools = [];
+let messages = [];
+let priceById = {};
+let bookings = [];
+let callSeq = 0;
+let busy = false;
+let config = { budget: INIT.budget || 3500, threshold: INIT.threshold || 100 };
+const AUTOPILOT = new URLSearchParams(location.search).has('autopilot');
+const GOLDEN_PROMPT = 'Plan a five-day trip to Paris for two people under $3,500. We want a boutique stay, great food, one memorable experience and airport transport. Automatically book anything under $100 and ask me before larger purchases.';
+
+// ---- helpers ---------------------------------------------------------------
+const $ = id => document.getElementById(id);
+function addMessage(role, text) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + role;
+  d.textContent = text;
+  $('messages').appendChild(d);
+  $('messages').scrollTop = $('messages').scrollHeight;
+  return d;
+}
+function safeParse(s) {
+  if (s == null) return null;
+  if (typeof s !== 'string') return s;
+  try { return JSON.parse(s); } catch (e) { return null; }
+}
+async function postJSON(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return r.json();
+}
+function providerFor(tool) {
+  const p = PROVIDERS.find(p => p.origin === tool.origin);
+  return p ? p.name : '?';
+}
+function logActivity(provider, tool, status, summary) {
+  fetch('/api/activity', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, tool, status, summary }),
+  }).catch(() => {});
+}
+
+// ---- WebMCP: iframes + discovery ------------------------------------------
+function esc(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function buildProviders() {
+  const wrap = $('providers');
+  wrap.innerHTML = '';
+  for (const p of PROVIDERS) {
+    const card = document.createElement('div');
+    card.className = 'provider';
+    card.dataset.origin = p.origin;
+    card.innerHTML =
+      `<div class="provider-head" id="head-${p.name}"><span>${p.icon}</span><span class="name">${p.name}</span>` +
+      `<span class="meta"><span class="dot" id="dot-${p.name}"></span> <span id="count-${p.name}">…</span></span></div>` +
+      `<div class="provider-backend">Live data: ${esc(p.backend || '—')}</div>` +
+      `<div class="provider-tools" id="tools-${p.name}" style="display:none"></div>`;
+    const frame = document.createElement('iframe');
+    frame.allow = 'tools ' + p.origin;
+    frame.onload = () => refreshTools();
+    frame.src = p.origin;
+    frame.loading = 'eager';
+    card.appendChild(frame);
+    wrap.appendChild(card);
+    $('head-' + p.name).onclick = () => toggleTools(p);
+  }
+}
+
+function toggleTools(p) {
+  const box = $('tools-' + p.name);
+  if (box.style.display === 'none') {
+    const list = tools.filter(t => t.origin === p.origin);
+    box.innerHTML = list.length
+      ? list.map(t => {
+          const ro = t.annotations && t.annotations.readOnlyHint;
+          return `<div class="tool-line"><span class="tool-name">${esc(t.name)}</span>` +
+            `<span class="tool-ro ${ro ? 'read' : 'write'}">${ro ? 'read' : 'write'}</span>` +
+            `<span class="tool-desc">${esc(t.description || '')}</span></div>`;
+        }).join('')
+      : '<div class="muted">No tools discovered yet.</div>';
+    box.style.display = 'block';
+  } else {
+    box.style.display = 'none';
+  }
+}
+
+async function discoverTools() {
+  if (!('modelContext' in document)) {
+    $('webmcp-status').innerHTML =
+      '<span class="banner">WebMCP (<code>document.modelContext</code>) is not available in this browser. Use Chrome 149+ with the WebMCP origin trial (or launch Chrome with <code>--enable-features=WebMCP</code>).</span>';
+    return [];
+  }
+  const origins = PROVIDERS.map(p => p.origin);
+  try {
+    const list = await document.modelContext.getTools({ fromOrigins: origins });
+    return list;
+  } catch (e) {
+    $('webmcp-status').innerHTML = '<span class="banner">WebMCP discovery failed: ' + e.message + '</span>';
+    return [];
+  }
+}
+
+async function refreshTools() {
+  tools = await discoverTools();
+  updateStatus();
+}
+
+function updateStatus() {
+  const counts = {};
+  for (const t of tools) counts[t.origin] = (counts[t.origin] || 0) + 1;
+  let connected = 0;
+  for (const p of PROVIDERS) {
+    const n = counts[p.origin] || 0;
+    const dot = $('dot-' + p.name), count = $('count-' + p.name);
+    if (dot) dot.className = 'dot ' + (n > 0 ? 'on' : 'off');
+    if (count) count.textContent = n > 0 ? (n + ' tools') : 'offline';
+    if (n > 0) connected++;
+  }
+  $('webmcp-status').textContent = tools.length
+    ? `WebMCP ● ${connected}/${PROVIDERS.length} services · ${tools.length} tools discovered`
+    : 'WebMCP — no tools discovered yet';
+}
+
+// ---- approval gate ---------------------------------------------------------
+function approvalNeeded(toolName, args) {
+  const meta = BOOKING_META[toolName];
+  if (!meta || !meta.idField) return false; // e.g. modify_ride is auto-approved
+  const id = args[meta.idField];
+  const price = priceById[id];
+  if (price == null) return true; // unknown price: ask
+  return price >= config.threshold;
+}
+
+function askApproval(toolName, args) {
+  if (AUTOPILOT) {
+    logActivity(providerFor(tools.find(t => t.name === toolName)), toolName, 'approval', 'auto-approved (autopilot)');
+    return Promise.resolve(true);
+  }
+  const meta = BOOKING_META[toolName];
+  const id = args[meta.idField];
+  const price = priceById[id];
+  const d = document.createElement('div');
+  d.className = 'msg approval';
+  const provider = providerFor(tools.find(t => t.name === toolName));
+  d.innerHTML =
+    `<h4>🔒 Approval required — ${provider}</h4>` +
+    `<div class="row"><strong>${meta.label}</strong> · <span class="price">$${price ?? '—'}</span></div>` +
+    `<div class="actions"><button class="btn" id="ap-yes">Approve</button>` +
+    `<button class="btn btn-ghost danger" id="ap-no">Reject</button></div>`;
+  $('messages').appendChild(d);
+  $('messages').scrollTop = $('messages').scrollHeight;
+  return new Promise(resolve => {
+    $('ap-yes').onclick = () => { d.innerHTML = `<div class="row">✅ Approved $${price}. Booking…</div>`; resolve(true); };
+    $('ap-no').onclick = () => { d.innerHTML = `<div class="row">❌ Rejected by you.</div>`; resolve(false); };
+  });
+}
+
+// ---- tool execution --------------------------------------------------------
+function indexResult(v) {
+  if (Array.isArray(v)) { v.forEach(indexResult); return; }
+  if (v && typeof v === 'object') {
+    if (typeof v.id === 'string' && typeof v.price === 'number') priceById[v.id] = v.price;
+    for (const k in v) indexResult(v[k]);
+  }
+}
+function summarize(name, parsed) {
+  if (!parsed) return 'no result';
+  if (parsed.error) return '✗ ' + parsed.error;
+  if (parsed.flights) return '✓ ' + parsed.flights.length + ' flights';
+  if (parsed.stays) return '✓ ' + parsed.stays.length + ' stays';
+  if (parsed.restaurants) return '✓ ' + parsed.restaurants.length + ' restaurants';
+  if (parsed.experiences) return '✓ ' + parsed.experiences.length + ' experiences';
+  if (parsed.rides) return '✓ ' + parsed.rides.length + ' rides';
+  const meta = BOOKING_META[name];
+  if (meta) { const w = parsed[meta.wrap]; if (w) return '✓ $' + w.price; }
+  return '✓ done';
+}
+async function execTool(tool, args) {
+  const raw = await document.modelContext.executeTool(tool, JSON.stringify(args));
+  return { raw: raw, parsed: safeParse(raw) };
+}
+function recordBooking(name, parsed) {
+  const meta = BOOKING_META[name];
+  if (!meta || !parsed) return;
+  const wrap = parsed[meta.wrap];
+  if (!wrap) return;
+  // Replace by label so rebooking/modifying updates the itinerary in place.
+  const idx = bookings.findIndex(b => BOOKING_META[b.name].label === meta.label);
+  if (idx >= 0) bookings[idx] = { name, wrap };
+  else bookings.push({ name, wrap });
+}
+
+async function simulateDisruption() {
+  const fb = bookings.find(b => BOOKING_META[b.name].label === 'Flight');
+  const tool = tools.find(t => t.name === 'cancel_flight');
+  if (!fb || !tool) return;
+  try {
+    await execTool(tool, { booking_id: fb.wrap.booking_id });
+    logActivity(providerFor(tool), 'cancel_flight', 'ok', '✗ flight cancelled (simulated)');
+  } catch (e) {
+    logActivity(providerFor(tool), 'cancel_flight', 'error', e.message);
+  }
+  const msg = 'My flight has been cancelled. Please find a replacement and adjust my airport transfer and dinner.';
+  addMessage('user', msg);
+  messages.push({ role: 'user', content: msg });
+  runAgent();
+}
+
+// ---- itinerary -------------------------------------------------------------
+function renderItinerary() {
+  if (bookings.length === 0) return;
+  $('itinerary-panel').style.display = 'block';
+  $('disrupt').style.display = 'inline-block';
+  let html = '<div class="itinerary">';
+  let total = 0;
+  for (const b of bookings) {
+    const meta = BOOKING_META[b.name];
+    const price = typeof b.wrap.price === 'number' ? b.wrap.price : 0;
+    total += price;
+    html += `<div class="it-line"><span class="ic">${meta.icon}</span><span class="t">${meta.title(b.wrap)}<span class="d">${meta.detail(b.wrap)}</span></span><span class="p">$${price}</span></div>`;
+  }
+  const remaining = config.budget - total;
+  html += `<div class="it-total"><span>Total</span><span>$${total}</span></div>`;
+  html += `<div class="it-total"><span>Budget</span><span>$${config.budget}</span></div>`;
+  html += `<div class="it-total"><span>Remaining</span><span class="remaining">$${remaining}</span></div>`;
+  html += '</div>';
+  $('itinerary').innerHTML = html;
+}
+
+// ---- agent loop ------------------------------------------------------------
+function parseConfig(text) {
+  const amounts = (text.match(/\$([\d,]+)/g) || []).map(s => parseInt(s.replace(/[$,]/g, ''), 10));
+  if (amounts.length >= 2) {
+    config.budget = Math.max(...amounts);
+    config.threshold = Math.min(...amounts);
+  } else if (amounts.length === 1) {
+    if (amounts[0] >= 1000) config.budget = amounts[0];
+    else config.threshold = amounts[0];
+  }
+}
+
+async function runAgent() {
+  busy = true;
+  $('send').disabled = true;
+  try {
+    while (true) {
+      const modelTools = tools.map(t => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: typeof t.inputSchema === 'string' ? safeParse(t.inputSchema) : t.inputSchema,
+        origin: t.origin,
+        annotations: t.annotations || {},
+      }));
+      const resp = await postJSON('/api/agent', { tools: modelTools, messages, config });
+
+      if (resp.type === 'tool_call') {
+        const tool = tools.find(t => t.name === resp.name);
+        if (!tool) { addMessage('system', '⚠ Tool not found: ' + resp.name); break; }
+        const callId = 'call_' + (++callSeq);
+        messages.push({ role: 'assistant', content: null, tool_calls: [{ id: callId, type: 'function', function: { name: resp.name, arguments: JSON.stringify(resp.arguments) } }] });
+
+        if (approvalNeeded(resp.name, resp.arguments)) {
+          const ok = await askApproval(resp.name, resp.arguments);
+          if (!ok) {
+            messages.push({ role: 'tool', tool_call_id: callId, content: JSON.stringify({ error: 'rejected by user', tool: resp.name, arguments: resp.arguments }) });
+            logActivity(providerFor(tool), resp.name, 'approval', '✗ rejected by user');
+            continue;
+          }
+        }
+
+        logActivity(providerFor(tool), resp.name, 'ok', 'calling…');
+        let result;
+        try {
+          result = await execTool(tool, resp.arguments);
+        } catch (e) {
+          result = { raw: JSON.stringify({ error: e.message }), parsed: { error: e.message } };
+        }
+        messages.push({ role: 'tool', tool_call_id: callId, content: result.raw });
+        if (result.parsed) {
+          indexResult(result.parsed);
+          if (result.parsed.error) {
+            logActivity(providerFor(tool), resp.name, 'error', summarize(resp.name, result.parsed));
+          } else {
+            recordBooking(resp.name, result.parsed);
+            logActivity(providerFor(tool), resp.name, 'ok', summarize(resp.name, result.parsed));
+          }
+        }
+        continue;
+      }
+
+      if (resp.type === 'final') {
+        addMessage('agent', resp.text);
+        renderItinerary();
+        break;
+      }
+      addMessage('system', resp.text || 'Something went wrong.');
+      break;
+    }
+  } finally {
+    busy = false;
+    $('send').disabled = false;
+  }
+}
+
+function send() {
+  const text = $('input').value.trim();
+  if (!text || busy) return;
+  $('input').value = '';
+  addMessage('user', text);
+  parseConfig(text);
+  messages.push({ role: 'user', content: text });
+  if (tools.length === 0) {
+    addMessage('system', 'No WebMCP tools discovered. Ensure the provider services are running and refresh.');
+    return;
+  }
+  runAgent();
+}
+
+// ---- wiring ----------------------------------------------------------------
+$('send').onclick = send;
+$('disrupt').onclick = simulateDisruption;
+$('input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+document.querySelectorAll('.quick button').forEach(b => {
+  b.onclick = () => { $('input').value = b.dataset.prompt; $('input').focus(); };
+});
+$('btn-services').onclick = () => {
+  $('settings').classList.toggle('open');
+  if ($('settings').classList.contains('open')) {
+    $('cfg-budget').value = config.budget;
+    $('cfg-threshold').value = config.threshold;
+  }
+};
+$('cfg-budget').onchange = () => { config.budget = parseInt($('cfg-budget').value, 10) || config.budget; };
+$('cfg-threshold').onchange = () => { config.threshold = parseInt($('cfg-threshold').value, 10) || 0; };
+
+(async function init() {
+  buildProviders();
+  await refreshTools();
+  // iframes register tools asynchronously — re-discover as they finish loading.
+  setTimeout(refreshTools, 1500);
+  if ('modelContext' in document) {
+    document.modelContext.addEventListener('toolchange', () => refreshTools());
+  }
+  if (AUTOPILOT) {
+    setTimeout(() => { $('input').value = GOLDEN_PROMPT; send(); }, 2500);
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ride — Transportation</title>
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<style>
+:root { --ink:#1a2238; --muted:#6b7280; --line:#e5e7eb; --accent:#059669; --bg:#ecfdf5; }
+* { box-sizing:border-box; }
+body { font-family:system-ui,-apple-system,sans-serif; color:var(--ink); background:var(--bg); margin:0; padding:24px; max-width:880px; margin-inline:auto; }
+header { display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); padding-bottom:12px; margin-bottom:20px; }
+h1 { font-size:22px; margin:0; }
+h2 { font-size:14px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin:24px 0 8px; }
+.badge-webmcp { font-size:12px; padding:4px 10px; border-radius:999px; background:#d1fae5; color:#047857; }
+.badge-webmcp.off { background:#fee2e2; color:#b91c1c; }
+form.search { display:grid; grid-template-columns:1fr 1fr auto; gap:8px; align-items:start; }
+.ac { position:relative; }
+.ac input { width:100%; padding:9px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
+.ac-list { position:absolute; top:100%; left:0; right:0; background:#fff; border:1px solid var(--line); border-radius:8px; margin-top:4px; z-index:20; box-shadow:0 8px 24px rgba(0,0,0,.08); overflow:hidden; }
+.ac-item { padding:8px 10px; font-size:13.5px; cursor:pointer; border-bottom:1px solid #f1f5f9; }
+.ac-item:hover { background:#f0fdf4; }
+.ac-item .sub { color:var(--muted); font-size:12px; display:block; }
+.card { border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:10px; background:#fff; }
+.card-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.row { font-size:14px; margin-top:4px; }
+.muted { color:var(--muted); }
+.price { font-weight:700; color:var(--accent); }
+.badge { font-size:11px; padding:2px 8px; border-radius:6px; background:#ecfdf5; color:#047857; }
+.btn { background:var(--accent); color:#fff; border:0; border-radius:8px; padding:9px 12px; font-size:13px; cursor:pointer; }
+.btn-ghost { background:#fff; color:var(--accent); border:1px solid var(--accent); }
+footer { margin-top:32px; font-size:12px; color:var(--muted); }
+details.history { margin-top:4px; }
+details.history summary { cursor:pointer; font-size:13px; font-weight:600; color:var(--muted); user-select:none; }
+details.history summary:hover { color:var(--ink); }
+</style>
+</head>
+<body>
+<header>
+  <h1>🚕 Ride</h1>
+  <span class="badge-webmcp" id="webmcp-badge">WebMCP: detecting…</span>
+</header>
+
+<section>
+  <h2>Book a ride <span class="muted">(real places &amp; routing · mock payment)</span></h2>
+  <form class="search" hx-post="/search" hx-target="#results" hx-swap="innerHTML">
+    <div class="ac">
+      <input name="pickup" id="pickup" placeholder="Pickup — e.g. Osapa, Lekki" autocomplete="off">
+      <div class="ac-list" id="pickup-list" style="display:none"></div>
+    </div>
+    <div class="ac">
+      <input name="dropoff" id="dropoff" placeholder="Dropoff — e.g. Victoria Island" autocomplete="off">
+      <div class="ac-list" id="dropoff-list" style="display:none"></div>
+    </div>
+    <button class="btn" type="submit">Search</button>
+  </form>
+  <div id="results" style="margin-top:12px;"></div>
+</section>
+
+<section>
+  <details class="history">
+    <summary>🕘 History <span class="muted">— your bookings (agents book here too)</span></summary>
+    <div id="bookings" hx-get="/bookings" hx-trigger="load, every 2s" hx-swap="innerHTML"></div>
+  </details>
+</section>
+
+<footer>Ride · independent WebMCP travel provider · human &amp; agent share one state · geocoding by Photon, routing by OSRM</footer>
+
+<script>
+// ---- place autocomplete (free: Photon via /api/places) ----
+function attachAutocomplete(inputId, listId) {
+  const input = document.getElementById(inputId);
+  const list = document.getElementById(listId);
+  let timer = null;
+
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 3) { list.style.display = 'none'; return; }
+    timer = setTimeout(async () => {
+      try {
+        const r = await fetch('/api/places?q=' + encodeURIComponent(q));
+        const data = await r.json();
+        list.innerHTML = '';
+        if (!data.places || data.places.length === 0) {
+          list.style.display = 'none';
+          return;
+        }
+        for (const p of data.places.slice(0, 6)) {
+          const d = document.createElement('div');
+          d.className = 'ac-item';
+          d.innerHTML = `<span>${p.name}</span><span class="sub">${p.address || ''}</span>`;
+          d.onmousedown = (e) => {
+            e.preventDefault();
+            input.value = p.name;
+            input.dataset.lat = p.lat;
+            input.dataset.lon = p.lon;
+            list.style.display = 'none';
+          };
+          list.appendChild(d);
+        }
+        list.style.display = 'block';
+      } catch (e) { list.style.display = 'none'; }
+    }, 250);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.ac')) list.style.display = 'none';
+  });
+}
+attachAutocomplete('pickup', 'pickup-list');
+attachAutocomplete('dropoff', 'dropoff-list');
+
+// ---- WebMCP ----
+(function () {
+  const EXPOSED_ORIGINS = {{.ExposedOriginsJS}};
+
+  async function post(url, body) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { error: data.error || ('HTTP ' + res.status) };
+    return data;
+  }
+
+  const tools = [
+    {
+      name: 'search_rides',
+      title: 'Search rides',
+      description: 'Search available rides between a pickup and dropoff location (free text place names, e.g. "Osapa" to "Victoria Island"). Uses real geocoding and road routing to return distance, duration and price per vehicle.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          pickup: { type: 'string', description: 'Pickup location name or address' },
+          dropoff: { type: 'string', description: 'Dropoff location name or address' },
+          datetime: { type: 'string' },
+          passengers: { type: 'integer' },
+        },
+        required: ['pickup', 'dropoff'],
+      },
+      annotations: { readOnlyHint: true },
+      execute: async (input) => post('/api/search_rides', input),
+    },
+    {
+      name: 'get_ride_quote',
+      title: 'Get a ride quote',
+      description: 'Return the current price quote for a ride vehicle between two locations.',
+      inputSchema: {
+        type: 'object',
+        properties: { ride_id: { type: 'string' }, pickup: { type: 'string' }, dropoff: { type: 'string' } },
+        required: ['ride_id'],
+      },
+      annotations: { readOnlyHint: true },
+      execute: async (input) => post('/api/get_ride_quote', input),
+    },
+    {
+      name: 'book_ride',
+      title: 'Book a ride',
+      description: 'Book a ride, associating it with a trip_id. Returns the confirmed booking with real distance, duration and the mock price.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          ride_id: { type: 'string', description: 'Vehicle id from search results' },
+          pickup: { type: 'string' },
+          dropoff: { type: 'string' },
+          datetime: { type: 'string' },
+          passengers: { type: 'integer' },
+          trip_id: { type: 'string' },
+        },
+        required: ['ride_id'],
+      },
+      annotations: { readOnlyHint: false },
+      execute: async (input) => post('/api/book_ride', input),
+    },
+    {
+      name: 'modify_ride',
+      title: 'Modify a ride booking',
+      description: 'Modify the pickup time or dropoff of an existing ride booking.',
+      inputSchema: {
+        type: 'object',
+        properties: { booking_id: { type: 'string' }, datetime: { type: 'string' }, dropoff: { type: 'string' } },
+        required: ['booking_id'],
+      },
+      annotations: { readOnlyHint: false },
+      execute: async (input) => post('/api/modify_ride', input),
+    },
+    {
+      name: 'cancel_ride',
+      title: 'Cancel a ride booking',
+      description: 'Cancel an existing ride booking by booking_id.',
+      inputSchema: { type: 'object', properties: { booking_id: { type: 'string' } }, required: ['booking_id'] },
+      annotations: { readOnlyHint: false },
+      execute: async (input) => post('/api/cancel_ride', input),
+    },
+  ];
+
+  async function register() {
+    const badge = document.getElementById('webmcp-badge');
+    if (!('modelContext' in document)) {
+      badge.textContent = 'WebMCP: unavailable';
+      badge.classList.add('off');
+      return;
+    }
+    let ok = 0;
+    for (const t of tools) {
+      try {
+        await document.modelContext.registerTool(t, { exposedTo: EXPOSED_ORIGINS });
+        ok++;
+      } catch (e) { console.warn('registerTool failed for', t.name, e); }
+    }
+    badge.textContent = 'WebMCP: ' + ok + '/' + tools.length + ' tools exposed';
+    if (ok === 0) badge.classList.add('off');
+  }
+
+  register();
+})();
+</script>
+</body>
+</html>
