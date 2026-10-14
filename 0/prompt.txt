@@ -1,0 +1,10 @@
+The existing TestFlightSearchToBooking fails because search now returns flight_id instead of id.
+
+Your recorded summary explicitly identified this breaking change and said the existing caller needed migration. Complete that migration in flynow/main_test.go: make the test's independent JSON contract read flight_id from search results and pass that selected identifier to the real booking handler.
+
+Keep the independent wire-contract check and assertions that the booking response and saved booking preserve the selected flight. Do not add an id fallback or change application behavior.
+
+Run only:
+go test -run TestFlightSearchToBooking -v
+
+Summarize the change and result. Do not commit or push.

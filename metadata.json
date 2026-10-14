@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.11.5-nightly.202610130630.4203b3d42",
+  "checkpoint_id": "01M4WQVWQ73G4SEPS0MYWG1JHV",
+  "strategy": "manual-commit",
+  "branch": "search-improvements",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "flynow/main_test.go"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2898,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 232832,
+    "output_tokens": 521,
+    "api_call_count": 4,
+    "subagent_tokens_complete": true
+  }
+}
