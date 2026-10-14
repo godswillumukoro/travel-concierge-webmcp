@@ -24,6 +24,10 @@ func TestFlightSearchToBooking(t *testing.T) {
 		rec := httptest.NewRecorder()
 		withJSON(handler).ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
+			if path == "/api/book_flight" {
+				t.Logf("%s: status %d: %s", path, rec.Code, rec.Body.String())
+				t.Fatal("booking lost the selected flight")
+			}
 			t.Fatalf("%s: status %d: %s", path, rec.Code, rec.Body.String())
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), output); err != nil {
@@ -32,7 +36,7 @@ func TestFlightSearchToBooking(t *testing.T) {
 	}
 
 	var search struct {
-		Flights []Flight `json:"flights"`
+		Flights []json.RawMessage `json:"flights"`
 	}
 	// An unfiltered search avoids depending on mock routes, dates, or prices.
 	call(s.searchFlights, "/api/search_flights", map[string]any{"travelers": 2}, &search)
@@ -40,15 +44,29 @@ func TestFlightSearchToBooking(t *testing.T) {
 		t.Fatal("search returned no mock flights")
 	}
 	// Prefer a result other than the first to catch booking a default flight.
-	selected := search.Flights[len(search.Flights)-1]
-	if selected.ID == "" {
-		t.Fatal("selected flight has no ID")
+	selectedJSON := search.Flights[len(search.Flights)-1]
+	// Pin the existing caller's wire contract independently of Flight's tags.
+	// A coordinated API migration must update callers as well as the server.
+	var wire struct {
+		ID string `json:"id"`
 	}
+	if err := json.Unmarshal(selectedJSON, &wire); err != nil {
+		t.Fatal(err)
+	}
+	if wire.ID == "" {
+		t.Log("search result omitted the existing caller's id field")
+		t.Fatal("booking lost the selected flight")
+	}
+	var selected Flight
+	if err := json.Unmarshal(selectedJSON, &selected); err != nil {
+		t.Fatal(err)
+	}
+	selected.ID = wire.ID
 	var booked struct {
 		Booking Booking `json:"booking"`
 	}
 	call(s.bookFlight, "/api/book_flight", map[string]any{
-		"flight_id": selected.ID, "travelers": 2,
+		"flight_id": wire.ID, "travelers": 2,
 	}, &booked)
 	if booked.Booking.BookingID == "" || booked.Booking.Status != "CONFIRMED" {
 		t.Fatalf("expected a confirmed booking, got %+v", booked.Booking)
