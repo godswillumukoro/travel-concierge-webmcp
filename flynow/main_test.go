@@ -45,28 +45,27 @@ func TestFlightSearchToBooking(t *testing.T) {
 	}
 	// Prefer a result other than the first to catch booking a default flight.
 	selectedJSON := search.Flights[len(search.Flights)-1]
-	// Pin the existing caller's wire contract independently of Flight's tags.
-	// A coordinated API migration must update callers as well as the server.
+	// Pin the search wire contract independently of Flight's tags.
 	var wire struct {
-		ID string `json:"id"`
+		FlightID string `json:"flight_id"`
 	}
 	if err := json.Unmarshal(selectedJSON, &wire); err != nil {
 		t.Fatal(err)
 	}
-	if wire.ID == "" {
-		t.Log("search result omitted the existing caller's id field")
+	if wire.FlightID == "" {
+		t.Log("search result omitted the flight_id field")
 		t.Fatal("booking lost the selected flight")
 	}
 	var selected Flight
 	if err := json.Unmarshal(selectedJSON, &selected); err != nil {
 		t.Fatal(err)
 	}
-	selected.ID = wire.ID
+	selected.ID = wire.FlightID
 	var booked struct {
 		Booking Booking `json:"booking"`
 	}
 	call(s.bookFlight, "/api/book_flight", map[string]any{
-		"flight_id": wire.ID, "travelers": 2,
+		"flight_id": wire.FlightID, "travelers": 2,
 	}, &booked)
 	if booked.Booking.BookingID == "" || booked.Booking.Status != "CONFIRMED" {
 		t.Fatalf("expected a confirmed booking, got %+v", booked.Booking)
