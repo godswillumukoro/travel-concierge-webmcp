@@ -1,0 +1,18 @@
+Context: FlyNow (flynow/) is a standalone Go + HTMX service exposing flight search through a human UI and WebMCP tools. It uses deterministic mock inventory without DUFFEL_API_KEY and adds Duffel offers when configured.
+
+Read the relevant FlyNow code, then improve flight search:
+
+1. Add an optional nonstop filter to the human search UI and WebMCP search input. When true, return only flights with zero stops.
+2. Add optional price sorting, ascending or descending. Preserve current ordering when omitted.
+3. Rename the flight identifier in search results from id to flight_id. Update the search tool description and any affected search schemas.
+4. Extract small mapping functions for mock inventory and Duffel offers where this improves clarity.
+5. Display prices consistently with the currency code, such as "USD 342.00", in the UI and a tool-output display field. Preserve numeric prices for sorting.
+6. Add focused search tests and document the search options in flynow/README.md.
+
+Keep the change focused on search. Do not modify other apps. Mock mode must work without API keys.
+
+Run only the new search tests using go test -run Search -v from flynow/. I will run the existing integration test separately.
+
+Summarize changes file by file, and explicitly list assumptions and any compatibility implications you identify.
+
+Do not commit or push.

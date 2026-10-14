@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.11.5-nightly.202610130630.4203b3d42",
+  "checkpoint_id": "01M4WPDM774M62TSV5PFDTVPCS",
+  "session_id": "01a13927-f41a-74c1-b09f-bbc913390864",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-14T07:53:30.976795Z",
+  "branch": "search-improvements",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "flynow/README.md",
+    "flynow/duffel.go",
+    "flynow/main.go",
+    "flynow/search.go",
+    "flynow/search_test.go",
+    "flynow/static/index.html"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6.1-sol",
+  "turn_id": "373688b2e105",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 46612,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 559104,
+    "output_tokens": 9720,
+    "api_call_count": 15,
+    "subagent_tokens_complete": true
+  },
+  "session_metrics": {
+    "turn_count": 1
+  }
+}
