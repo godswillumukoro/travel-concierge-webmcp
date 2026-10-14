@@ -84,34 +84,9 @@ func duffelSearch(origin, dest, depart, ret string, travelers int) ([]Flight, er
 
 	out := make([]Flight, 0, len(resp.Data.Offers))
 	for _, o := range resp.Data.Offers {
-		if len(o.Slices) == 0 {
+		f, ok := mapDuffelOffer(o)
+		if !ok {
 			continue
-		}
-		s0 := o.Slices[0]
-		price, _ := strconv.ParseFloat(o.TotalAmount, 64)
-		f := Flight{
-			ID:          o.ID,
-			Airline:     o.Owner.Name,
-			Origin:      s0.Origin.IataCode,
-			Destination: s0.Destination.IataCode,
-			Stops:       max(0, len(s0.Segments)-1),
-			Price:       int(price + 0.5),
-			Currency:    o.TotalCurrency,
-			Cabin:       "Economy",
-			LogoURL:     o.Owner.LogoSymbolURL,
-		}
-		if len(s0.Segments) > 0 {
-			f.FlightNumber = s0.Segments[0].OperatingCarrierFlightNumber
-			f.Departure = s0.Segments[0].DepartingAt
-			f.Arrival = s0.Segments[0].ArrivingAt
-		}
-		if len(o.Slices) > 1 && len(o.Slices[1].Segments) > 0 {
-			f.ReturnDeparture = o.Slices[1].Segments[0].DepartingAt
-			f.ReturnArrival = o.Slices[1].Segments[0].ArrivingAt
-		}
-		if d, dur := flightDistance(f.Origin, f.Destination); d > 0 {
-			f.DistanceKm = d
-			f.Duration = dur
 		}
 		out = append(out, f)
 	}
@@ -150,4 +125,45 @@ func duffelCall(method, path string, body any, out any) error {
 		return nil
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+func mapDuffelOffer(o duffelOffer) (Flight, bool) {
+	if len(o.Slices) == 0 {
+		return Flight{}, false
+	}
+	stops := 0
+	for _, slice := range o.Slices {
+		if len(slice.Segments) == 0 {
+			return Flight{}, false
+		}
+		stops = max(stops, len(slice.Segments)-1)
+	}
+	s0 := o.Slices[0]
+	price, _ := strconv.ParseFloat(o.TotalAmount, 64)
+	f := Flight{
+		ID:          o.ID,
+		Airline:     o.Owner.Name,
+		Origin:      s0.Origin.IataCode,
+		Destination: s0.Destination.IataCode,
+		Stops:       stops,
+		Price:       int(price + 0.5),
+		Currency:    o.TotalCurrency,
+		Cabin:       "Economy",
+		LogoURL:     o.Owner.LogoSymbolURL,
+		Source:      "duffel",
+	}
+	if len(s0.Segments) > 0 {
+		f.FlightNumber = s0.Segments[0].OperatingCarrierFlightNumber
+		f.Departure = s0.Segments[0].DepartingAt
+		f.Arrival = s0.Segments[len(s0.Segments)-1].ArrivingAt
+	}
+	if len(o.Slices) > 1 && len(o.Slices[1].Segments) > 0 {
+		f.ReturnDeparture = o.Slices[1].Segments[0].DepartingAt
+		f.ReturnArrival = o.Slices[1].Segments[len(o.Slices[1].Segments)-1].ArrivingAt
+	}
+	if d, dur := flightDistance(f.Origin, f.Destination); d > 0 {
+		f.DistanceKm = d
+		f.Duration = dur
+	}
+	return f, true
 }

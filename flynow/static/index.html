@@ -16,8 +16,8 @@ h2 { font-size:14px; text-transform:uppercase; letter-spacing:.08em; color:var(-
 .badge-webmcp.off { background:#fee2e2; color:#b91c1c; }
 .grid { display:grid; grid-template-columns:1fr 1fr; gap:24px; }
 @media (max-width:720px){ .grid { grid-template-columns:1fr; } }
-form.search { display:grid; grid-template-columns:repeat(5,1fr) auto; gap:8px; }
-form.search input { padding:8px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
+form.search { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; }
+form.search input:not([type="checkbox"]), form.search select { min-width:0; width:100%; padding:8px; border:1px solid var(--line); border-radius:8px; font-size:14px; }
 .card { border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-bottom:10px; background:#fff; }
 .card-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .row { font-size:14px; margin-top:4px; }
@@ -50,9 +50,17 @@ footer { margin-top:32px; font-size:12px; color:var(--muted); }
     <input name="departure_date" type="date" value="2026-09-15">
     <input name="return_date" type="date" value="2026-09-20">
     <input name="travelers" type="number" value="2" min="1">
+    <label for="nonstop"><input id="nonstop" name="nonstop" type="checkbox" value="true"> Nonstop only</label>
+    <label for="sort_by_price">Price order
+      <select id="sort_by_price" name="sort_by_price">
+        <option value="">Default order</option>
+        <option value="asc">Lowest first</option>
+        <option value="desc">Highest first</option>
+      </select>
+    </label>
     <button class="btn" type="submit">Search</button>
   </form>
-  <div id="results" style="margin-top:12px;"></div>
+  <div id="results" aria-live="polite" style="margin-top:12px;"></div>
 </section>
 
 <section>
@@ -84,7 +92,7 @@ footer { margin-top:32px; font-size:12px; color:var(--muted); }
     {
       name: 'search_flights',
       title: 'Search flights',
-      description: 'Search available round-trip flights between two airports on given dates. Returns flight options with id, airline, times, stops and total price.',
+      description: 'Search available round-trip flights between two airports on given dates. Optional nonstop filter and price sorting (asc/desc). Returns flight_id, airline, times, stops, numeric price, currency and price_display (e.g. USD 842.00). Omitted sorting preserves default order.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -93,6 +101,8 @@ footer { margin-top:32px; font-size:12px; color:var(--muted); }
           departure_date: { type: 'string', description: 'Outbound date, YYYY-MM-DD' },
           return_date: { type: 'string', description: 'Return date, YYYY-MM-DD' },
           travelers: { type: 'integer', description: 'Number of travelers' },
+          nonstop: { type: 'boolean', description: 'Optional: only flights with zero stops on every leg when true' },
+          sort_by_price: { type: 'string', enum: ['asc', 'desc'], description: 'Optional numeric price ordering; omitted keeps default order' },
         },
         required: ['origin', 'destination', 'departure_date'],
       },

@@ -191,47 +191,21 @@ func (s *Store) findFlight(id string) *Flight {
 }
 
 func (s *Store) searchFlights(w http.ResponseWriter, r *http.Request) {
-	var in struct {
-		Origin        string `json:"origin"`
-		Destination   string `json:"destination"`
-		DepartureDate string `json:"departure_date"`
-		ReturnDate    string `json:"return_date"`
-		Travelers     int    `json:"travelers"`
-	}
+	var in searchInput
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeErr(w, 400, "invalid request: "+err.Error())
 		return
 	}
-	if in.Travelers <= 0 {
-		in.Travelers = 2
+	if !in.validSort() {
+		writeErr(w, 400, "sort_by_price must be asc or desc")
+		return
 	}
-	results := []Flight{}
-	for _, f := range flights {
-		if in.Origin != "" && !strings.EqualFold(f.Origin, in.Origin) {
-			continue
-		}
-		if in.Destination != "" && !strings.EqualFold(f.Destination, in.Destination) {
-			continue
-		}
-		results = append(results, f)
+	results := s.search(in)
+	out := make([]searchResult, 0, len(results))
+	for _, f := range results {
+		out = append(out, mapSearchResult(f))
 	}
-	for i := range results {
-		if d, dur := flightDistance(results[i].Origin, results[i].Destination); d > 0 {
-			results[i].DistanceKm = d
-			results[i].Duration = dur
-		}
-	}
-	// Enrich with live Duffel offers (only when DUFFEL_API_KEY is set).
-	if live, err := duffelSearch(in.Origin, in.Destination, in.DepartureDate, in.ReturnDate, in.Travelers); err == nil {
-		for i := range live {
-			live[i].Source = "duffel"
-			s.mu.Lock()
-			s.live[live[i].ID] = live[i]
-			s.mu.Unlock()
-			results = append(results, live[i])
-		}
-	}
-	writeJSON(w, map[string]any{"flights": results})
+	writeJSON(w, map[string]any{"flights": out})
 }
 
 func (s *Store) flightDetails(w http.ResponseWriter, r *http.Request) {
@@ -363,25 +337,31 @@ func (s *Store) htmxSearch(w http.ResponseWriter, r *http.Request) {
 	_ = r.ParseForm()
 	origin := resolveAirportCode(r.FormValue("origin"))
 	dest := resolveAirportCode(r.FormValue("destination"))
-	departure := r.FormValue("departure_date")
-	ret := r.FormValue("return_date")
+	travelers, _ := strconv.Atoi(r.FormValue("travelers"))
+	in := searchInput{
+		Origin: origin, Destination: dest,
+		DepartureDate: r.FormValue("departure_date"), ReturnDate: r.FormValue("return_date"),
+		Travelers: travelers, Nonstop: r.FormValue("nonstop") == "true",
+		SortByPrice: r.FormValue("sort_by_price"),
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if origin == "" || dest == "" {
-		_, _ = w.Write([]byte(`<p class="muted">Enter an origin and destination to search live flights.</p>`))
+	if !in.validSort() {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`<p class="muted">Price sort must be asc or desc.</p>`))
 		return
 	}
-	live, err := duffelSearch(origin, dest, departure, ret, 2)
-	if err != nil || len(live) == 0 {
-		_, _ = w.Write([]byte(`<p class="muted">No live flights found for ` + origin + ` → ` + dest + `. (Set DUFFEL_API_KEY for live offers.)</p>`))
+	if origin == "" || dest == "" {
+		_, _ = w.Write([]byte(`<p class="muted">Enter an origin and destination to search flights.</p>`))
+		return
+	}
+	results := s.search(in)
+	if len(results) == 0 {
+		_, _ = w.Write([]byte(`<p class="muted">No flights found for these search options.</p>`))
 		return
 	}
 	var sb strings.Builder
-	for i := range live {
-		live[i].Source = "duffel"
-		s.mu.Lock()
-		s.live[live[i].ID] = live[i]
-		s.mu.Unlock()
-		s.renderFlightCard(&sb, live[i])
+	for _, f := range results {
+		s.renderFlightCard(&sb, f)
 	}
 	_, _ = w.Write([]byte(sb.String()))
 }
@@ -398,7 +378,11 @@ func (s *Store) renderFlightCard(sb *strings.Builder, f Flight) {
 	sb.WriteString(`<div class="card">`)
 	sb.WriteString(logo)
 	sb.WriteString(`<div class="card-body">`)
-	sb.WriteString(`<div class="card-top"><strong>` + f.Airline + `</strong> <span class="muted">` + f.FlightNumber + `</span><span class="badge">live · Duffel</span><span class="price">$` + strconv.Itoa(f.Price) + `</span></div>`)
+	badge := "mock"
+	if f.Source == "duffel" {
+		badge = "live · Duffel"
+	}
+	sb.WriteString(`<div class="card-top"><strong>` + f.Airline + `</strong> <span class="muted">` + f.FlightNumber + `</span><span class="badge">` + badge + `</span><span class="price">` + formatPrice(f.Currency, f.Price) + `</span></div>`)
 	sb.WriteString(`<div class="row">` + f.Origin + ` → ` + f.Destination + `</div>`)
 	sb.WriteString(`<div class="row muted">` + f.Departure + ` · ` + strconv.Itoa(f.Stops) + ` stop(s)` + dist + `</div>`)
 	sb.WriteString(`<button class="btn" hx-post="/book" hx-vals='{"flight_id":"` + f.ID + `"}' hx-target="#bookings" hx-swap="innerHTML">Book</button>`)
