@@ -1,0 +1,5 @@
+This is a staged Entire demonstration. Inspect the existing two-line change in main.go: the intended addition is nonstop flight search; the deliberate regression is reading flight_id instead of id from the selected result. Run TestFlightSearchToBooking to confirm the failure. Leave both changes in place and stop before committing.
+
+---
+
+Commit only main.go and main_test.go with the message “Demo: nonstop flight search with staged booking regression”. Keep the intentional failure. Verify the commit contains an Entire-Checkpoint trailer, then push this demo branch to origin with upstream tracking. Don’t include .codex or .entire configuration files, and don’t fix anything yet. Stop and report the commit SHA, checkpoint ID, and push result.
