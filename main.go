@@ -324,9 +324,9 @@ var cats = []*category{
 	{
 		key: "flight", searchTool: "search_flights", bookTool: "book_flight",
 		searchKey: "flights", idField: "flight_id", bookWrapKey: "booking",
-		searchArgs: map[string]any{"origin": "LOS", "destination": "CDG", "departure_date": "2026-09-15", "return_date": "2026-09-20", "travelers": 2},
+		searchArgs: map[string]any{"origin": "LOS", "destination": "CDG", "departure_date": "2026-09-15", "return_date": "2026-09-20", "travelers": 2, "nonstop": true},
 		bookArgsFn: func(it map[string]any) map[string]any {
-			return map[string]any{"flight_id": it["id"], "travelers": 2, "trip_id": "TRIP-001"}
+			return map[string]any{"flight_id": it["flight_id"], "travelers": 2, "trip_id": "TRIP-001"}
 		},
 		titleWrapFn: func(w map[string]any) string {
 			if f, ok := w["flight"].(map[string]any); ok {
